@@ -1,0 +1,185 @@
+-- =====================================================================
+-- ESQUEMA: Registro de operaciones de hardware en taller
+-- Pégalo entero en Supabase → SQL Editor → New query → Run
+-- =====================================================================
+
+-- ---------- PERFILES (alumno / profesor) ----------
+create table if not exists profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  nombre text not null,
+  rol text not null check (rol in ('alumno','profesor')),
+  created_at timestamptz default now()
+);
+
+-- ---------- EQUIPOS (se nutre del Excel "InventarioTallerMontaje") ----------
+-- Las columnas siguen el mismo nombre/orden que tu Excel para poder
+-- importarlo directamente desde Supabase → Table editor → Import CSV.
+create table if not exists equipos (
+  id bigint generated always as identity primary key,
+  codigo text unique not null,        -- Excel: ID (ej. "MME_FP_VIA01")
+  tipo text,                          -- Excel: TIPO (ej. "ThinkCentre Lenovo")
+  modelo_basico text,                 -- Excel: MODELO BASICO
+  modelo text,                        -- Excel: MODELO
+  sn text,                            -- Excel: SN (número de serie)
+  product_id text,                    -- Excel: PRODUCT ID
+  educa_serial text,                  -- Excel: EDUCA SERIAL
+  ram text,                           -- Excel: RAM
+  disco text,                         -- Excel: DISCO
+  procesador text,                    -- Excel: PROCESADOR
+  notas_inventario text,              -- Excel: NOTAS (incidencias/estado conocido del equipo)
+  estado text not null default 'libre'
+    check (estado in ('libre','ocupado','en_revision')),
+  created_at timestamptz default now()
+);
+
+-- ---------- BLOQUES LECTIVOS (horario) ----------
+create table if not exists bloques_lectivos (
+  id bigint generated always as identity primary key,
+  nombre text not null,               -- ej: "2ª hora"
+  dia_semana int not null check (dia_semana between 1 and 7), -- 1=lunes ... 7=domingo
+  hora_inicio time not null,
+  hora_fin time not null
+);
+
+-- ---------- REGISTROS (una operación sobre un equipo, puede ser en grupo) ----------
+create table if not exists registros (
+  id bigint generated always as identity primary key,
+  equipo_id bigint not null references equipos(id),
+  bloque_lectivo_id bigint references bloques_lectivos(id),
+  fuera_de_bloque boolean not null default false,
+  fecha_inicio timestamptz not null default now(),
+  fecha_fin timestamptz,
+  estado text not null default 'abierto'
+    check (estado in ('abierto','en_revision','revisado')),
+  estado_equipo_final text
+    check (estado_equipo_final in ('completamente_desmontado','parcialmente_desmontado','piezas_fuera','montado')),
+  desperfecto boolean default false,
+  terminado boolean default false,
+  ayuda_recibida boolean default false,
+  cerrado_automaticamente boolean default false,
+  revisado_por uuid references profiles(id),
+  revisado_en timestamptz,
+  creado_por uuid references profiles(id),
+  created_at timestamptz default now()
+);
+
+-- ---------- PARTICIPACIÓN DE CADA ALUMNO EN UN REGISTRO ----------
+create table if not exists registro_alumnos (
+  id bigint generated always as identity primary key,
+  registro_id bigint not null references registros(id) on delete cascade,
+  alumno_id uuid not null references profiles(id),
+  descripcion_operaciones text,
+  problemas_encontrados text,
+  resultados_obtenidos text,
+  updated_at timestamptz default now(),
+  unique (registro_id, alumno_id)
+);
+
+-- ---------- NOTAS PRIVADAS DEL PROFESOR (nunca visibles para alumnos) ----------
+create table if not exists notas_profesor (
+  id bigint generated always as identity primary key,
+  registro_id bigint not null references registros(id) on delete cascade,
+  profesor_id uuid not null references profiles(id),
+  nota text not null,
+  created_at timestamptz default now()
+);
+
+-- =====================================================================
+-- ROW LEVEL SECURITY
+-- =====================================================================
+alter table profiles enable row level security;
+alter table equipos enable row level security;
+alter table bloques_lectivos enable row level security;
+alter table registros enable row level security;
+alter table registro_alumnos enable row level security;
+alter table notas_profesor enable row level security;
+
+-- función auxiliar: ¿el usuario actual es profesor?
+create or replace function is_profesor()
+returns boolean language sql stable as $$
+  select exists (
+    select 1 from profiles where id = auth.uid() and rol = 'profesor'
+  );
+$$;
+
+-- PROFILES: cada uno ve el suyo; el profesor ve todos
+create policy "profiles_select" on profiles for select
+  using (id = auth.uid() or is_profesor());
+create policy "profiles_update_own" on profiles for update
+  using (id = auth.uid());
+
+-- EQUIPOS: todos los autenticados pueden leer; solo el profesor edita/crea
+create policy "equipos_select" on equipos for select using (auth.uid() is not null);
+create policy "equipos_write_profesor" on equipos for insert with check (is_profesor());
+create policy "equipos_update_profesor" on equipos for update using (is_profesor());
+create policy "equipos_delete_profesor" on equipos for delete using (is_profesor());
+-- Nota: el cambio de estado de "libre"->"ocupado"->"en_revision" también lo hace
+-- el alumno indirectamente vía función RPC (ver abajo), por eso además permitimos
+-- update a cualquier autenticado SOLO a través de la función segura crear_registro().
+
+-- BLOQUES LECTIVOS: lectura para todos, escritura solo profesor
+create policy "bloques_select" on bloques_lectivos for select using (auth.uid() is not null);
+create policy "bloques_write_profesor" on bloques_lectivos for all using (is_profesor());
+
+-- REGISTROS: alumno ve los suyos (donde participa) + el profesor ve todos
+create policy "registros_select" on registros for select
+  using (
+    is_profesor()
+    or exists (select 1 from registro_alumnos ra where ra.registro_id = registros.id and ra.alumno_id = auth.uid())
+  );
+create policy "registros_insert" on registros for insert
+  with check (auth.uid() is not null);
+create policy "registros_update" on registros for update
+  using (
+    is_profesor()
+    or exists (select 1 from registro_alumnos ra where ra.registro_id = registros.id and ra.alumno_id = auth.uid())
+  );
+
+-- REGISTRO_ALUMNOS: cada alumno ve/edita su propia fila; ve las de compañeros del mismo registro; profesor ve todo
+create policy "registro_alumnos_select" on registro_alumnos for select
+  using (
+    is_profesor()
+    or exists (
+      select 1 from registro_alumnos ra2
+      where ra2.registro_id = registro_alumnos.registro_id and ra2.alumno_id = auth.uid()
+    )
+  );
+create policy "registro_alumnos_insert" on registro_alumnos for insert
+  with check (alumno_id = auth.uid());
+create policy "registro_alumnos_update_own" on registro_alumnos for update
+  using (alumno_id = auth.uid());
+
+-- NOTAS_PROFESOR: SOLO el profesor puede leer o escribir. Los alumnos NUNCA.
+create policy "notas_profesor_all" on notas_profesor for all
+  using (is_profesor()) with check (is_profesor());
+
+-- =====================================================================
+-- Trigger: cuando se crea un usuario en auth.users, si viene con metadata
+-- de rol/nombre (lo pone el profesor al crear la cuenta), crea su profile.
+-- =====================================================================
+create or replace function handle_new_user()
+returns trigger language plpgsql security definer as $$
+begin
+  insert into public.profiles (id, nombre, rol)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'nombre', new.email),
+    coalesce(new.raw_user_meta_data->>'rol', 'alumno')
+  )
+  on conflict (id) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists on_auth_user_created on auth.users;
+create trigger on_auth_user_created
+  after insert on auth.users
+  for each row execute function handle_new_user();
+
+-- =====================================================================
+-- Datos de ejemplo para bloques lectivos (ajusta a tu horario real)
+-- =====================================================================
+-- insert into bloques_lectivos (nombre, dia_semana, hora_inicio, hora_fin) values
+-- ('1ª hora', 1, '08:30', '09:25'),
+-- ('2ª hora', 1, '09:25', '10:20'),
+-- ('3ª hora', 1, '10:20', '11:15');
