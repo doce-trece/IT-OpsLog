@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
 import Login from './pages/Login.jsx'
+import SetNewPassword from './pages/SetNewPassword.jsx'
 import AlumnoDashboard from './pages/AlumnoDashboard.jsx'
 import ProfesorDashboard from './pages/ProfesorDashboard.jsx'
 
 export default function App() {
   const [session, setSession] = useState(undefined) // undefined = cargando
   const [perfil, setPerfil] = useState(null)
+  const [modoRecuperacion, setModoRecuperacion] = useState(false)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY') setModoRecuperacion(true)
       setSession(s)
     })
     return () => listener.subscription.unsubscribe()
@@ -34,6 +37,10 @@ export default function App() {
 
   if (session === undefined) {
     return <div className="cargando">Cargando…</div>
+  }
+
+  if (modoRecuperacion) {
+    return <SetNewPassword onCompletado={() => setModoRecuperacion(false)} />
   }
 
   if (!session) {

@@ -33,6 +33,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
 .login-box input { padding: 0.6rem; border: 1px solid var(--borde); border-radius: 6px; }
 .login-box button { background: var(--azul); color: white; border: none; padding: 0.7rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
 .error-msg { color: var(--rojo); font-size: 0.85rem; }
+.link-btn { background: none; border: none; color: var(--azul); cursor: pointer; font-size: 0.85rem; padding: 0.3rem 0; text-align: left; }
 
 /* Genéricos */
 button { font-family: inherit; }
