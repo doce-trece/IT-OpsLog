@@ -20,7 +20,7 @@ create table if not exists equipos (
   tipo text,                          -- Excel: TIPO (ej. "ThinkCentre Lenovo")
   modelo_basico text,                 -- Excel: MODELO BASICO
   modelo text,                        -- Excel: MODELO
-  sn text unique,                     -- Excel: SN (número de serie)
+  sn text,                            -- Excel: SN (número de serie)
   product_id text,                    -- Excel: PRODUCT ID
   educa_serial text,                  -- Excel: EDUCA SERIAL
   ram text,                           -- Excel: RAM

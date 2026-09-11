@@ -1,8 +1,0 @@
-codigo,tipo,modelo_basico,modelo,sn,product_id,educa_serial,ram,disco,procesador,notas_inventario
-MME_FP_VIA01,ThinkCentre Lenovo,M82,MT-M 2929 A77,PB9R6BE,1S2929A77PB9R6BE,ED37010108P046,8GB,465GB,i3 3220,Suena zumbido en el arranque y se bloquea al poco de arrancar
-MME_FP_VIA02,ThinkCentre Lenovo,M82,MT-M 2929 A77,S4TAE55,1S29A77S4TAE55,ED37010108P051,8GB,465GB,i3 3220,"Arranca Solo, a veces arranca con la pantalla triplicada y con rayas"
-MME_FP_VIA03,ThinkCentre Lenovo,M82,MT-M 2929 A77,PB9R7TW,1S29A77PB9R7TW,ED37010108P719,8GB,465GB,i3 3220,Antiguo DEPTO Matemáticas
-PENDIENTE-1,ThinkCentre Lenovo,A70,MT-M 7844-K1G,S5CRGTX,,NO REGISTRADO,2GB,164GB,Pentium dual core E5700,"Imagen POR DVI, tiene una mint instalada. Comprobar que tarjeta gráfica lleva. Tiene Doble boot. Win7 mint"
-PENDIENTE-2,HP ProDesk,400 G1 ,400 G1 SFF Business,CZC4202M6Q,E2D14AV,ED37010108P713,,,,Arranca en dominio pero no va aemloacl ni aemcentros
-PENDIENTE-3,HP Compaq,8100 Elite Small Form Factor,8100 Elite SFF,CZC05098HZ,AY032AV,ED37010108P703,4GB,225GB,"Intel Core i5 650 (3,33 GHz)",Sala de Profes antiguo. Arranca Rápido. Posible SSD
-PENDIENTE-4,HP Compaq,8100 Elite Small Form Factor,8100 Elite SFF,CZC0511T0W,"AY0,32AV",ED37010108P707,,,,Arranca al conectar fuente. 

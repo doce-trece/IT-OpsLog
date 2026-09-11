@@ -133,37 +133,7 @@ que ya están en `schema.sql` (cada alumno solo ve y edita lo suyo; las notas
 del profesor son invisibles para los alumnos a nivel de base de datos, no
 solo de interfaz).
 
-## 7. Login con usuario simple y recuperación de contraseña
-
-Por defecto Supabase exige el email completo para iniciar sesión. Para que
-alumnos y profesor entren con un usuario corto (tipo `alumno1`) en vez de
-memorizar el correo, y puedan recuperar su contraseña ellos mismos:
-
-1. Supabase → **SQL Editor** → pega y ejecuta `sql/usuario_simple.sql`.
-   Esto añade una columna `username` a `profiles` y una función que
-   traduce usuario → email para poder iniciar sesión.
-2. Table Editor → **profiles** → rellena la columna `username` para cada
-   alumno y para ti (profesor). Debe ser único (ej. `alumno1`, `mgarcia`,
-   `profesor`).
-3. Authentication → **URL Configuration**: añade la URL pública de tu web
-   (la de GitHub Pages, ej. `https://doce-trece.github.io/IT-OpsLog/`)
-   tanto en **Site URL** como en **Redirect URLs**. Sin esto, el enlace de
-   recuperación de contraseña no podrá volver a tu web.
-4. Vuelve a desplegar (o simplemente usa la web ya desplegada, no hace
-   falta tocar el código para este cambio si ya subiste estos archivos).
-
-**Cómo funciona para el usuario:** en el login escriben su `username` y su
-contraseña. Si no la recuerdan, pulsan "¿Has olvidado tu contraseña?",
-escriben su `username` de nuevo, y Supabase les envía un correo con un
-enlace. Al pulsarlo, vuelven a la web y les aparece una pantalla para
-elegir una contraseña nueva.
-
-*Nota: el email al que llega el enlace lo manda el propio Supabase (con su
-plantilla y remitente por defecto en el plan gratuito). Si prefieres que
-los correos salgan con el dominio/remitente de tu centro, en Authentication
-→ Emails puedes configurar un servidor SMTP propio más adelante.*
-
-## 8. Cómo funciona el flujo
+## Cómo funciona el flujo
 
 - **Alumno**: entra → ve el bloque lectivo actual → elige un equipo libre (o
   se une a uno "ocupado" si un compañero ya abrió un registro en grupo) →
