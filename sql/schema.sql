@@ -27,10 +27,41 @@ create table if not exists equipos (
   disco text,                         -- Excel: DISCO
   procesador text,                    -- Excel: PROCESADOR
   notas_inventario text,              -- Excel: NOTAS (incidencias/estado conocido del equipo)
+  origen text,
+  anio_entrada_taller int,
   estado text not null default 'libre'
     check (estado in ('libre','ocupado','en_revision')),
+  ultima_modificacion_por uuid references profiles(id),
+  ultima_modificacion_en timestamptz,
   created_at timestamptz default now()
 );
+
+-- Historial: guarda el estado ANTERIOR del equipo cada vez que se edita,
+-- para que ninguna modificación del inventario se pierda ni se sobrescriba
+-- sin dejar rastro.
+create table if not exists equipos_historial (
+  id bigint generated always as identity primary key,
+  equipo_id bigint not null references equipos(id) on delete cascade,
+  datos_anteriores jsonb not null,
+  modificado_por uuid references profiles(id),
+  modificado_en timestamptz not null default now()
+);
+
+create or replace function registrar_historial_equipo()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into equipos_historial (equipo_id, datos_anteriores, modificado_por)
+  values (old.id, to_jsonb(old), auth.uid());
+  new.ultima_modificacion_por := auth.uid();
+  new.ultima_modificacion_en := now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trigger_historial_equipo on equipos;
+create trigger trigger_historial_equipo
+  before update on equipos
+  for each row execute function registrar_historial_equipo();
 
 -- ---------- BLOQUES LECTIVOS (horario) ----------
 create table if not exists bloques_lectivos (
@@ -52,10 +83,14 @@ create table if not exists registros (
   estado text not null default 'abierto'
     check (estado in ('abierto','en_revision','revisado')),
   estado_equipo_final text
-    check (estado_equipo_final in ('completamente_desmontado','parcialmente_desmontado','piezas_fuera','montado')),
+    check (estado_equipo_final in (
+      'desmontado_no_funcional','desmontado_funcional','piezas_fuera_no_funcional',
+      'parcial_no_funcional','parcial_funcional','montado_no_funcional','montado_funcional'
+    )),
   desperfecto boolean default false,
   terminado boolean default false,
   ayuda_recibida boolean default false,
+  ayuda_recibida_de uuid references profiles(id),
   cerrado_automaticamente boolean default false,
   revisado_por uuid references profiles(id),
   revisado_en timestamptz,
@@ -95,36 +130,47 @@ alter table registro_alumnos enable row level security;
 alter table notas_profesor enable row level security;
 
 -- función auxiliar: ¿el usuario actual es profesor?
+-- SECURITY DEFINER: evita que esta consulta interna vuelva a pasar por la
+-- política de seguridad de "profiles" (que también llama a is_profesor()),
+-- lo que causaría una recursión infinita ("stack depth limit exceeded").
 create or replace function is_profesor()
-returns boolean language sql stable as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from profiles where id = auth.uid() and rol = 'profesor'
   );
 $$;
 
--- PROFILES: cada uno ve el suyo; el profesor ve todos
+-- PROFILES: cualquier autenticado puede ver el nombre de los demás (hace
+-- falta para el selector de "quién te ha ayudado" y para que el profesor
+-- vea el nombre de cada alumno).
 create policy "profiles_select" on profiles for select
-  using (id = auth.uid() or is_profesor());
+  using (auth.uid() is not null);
 create policy "profiles_update_own" on profiles for update
   using (id = auth.uid());
 
--- EQUIPOS: todos los autenticados pueden leer; solo el profesor edita/crea
+-- EQUIPOS: todos los autenticados pueden leer; cualquier autenticado puede
+-- crear/editar (alumno o profesor); solo el profesor puede borrar.
 create policy "equipos_select" on equipos for select using (auth.uid() is not null);
-create policy "equipos_write_profesor" on equipos for insert with check (is_profesor());
-create policy "equipos_update_profesor" on equipos for update using (is_profesor());
+create policy "equipos_insert_autenticado" on equipos for insert with check (auth.uid() is not null);
+create policy "equipos_update_estado" on equipos for update using (auth.uid() is not null);
 create policy "equipos_delete_profesor" on equipos for delete using (is_profesor());
--- Nota: el cambio de estado de "libre"->"ocupado"->"en_revision" también lo hace
--- el alumno indirectamente vía función RPC (ver abajo), por eso además permitimos
--- update a cualquier autenticado SOLO a través de la función segura crear_registro().
+
+alter table equipos_historial enable row level security;
+create policy "equipos_historial_select" on equipos_historial for select
+  using (auth.uid() is not null);
 
 -- BLOQUES LECTIVOS: lectura para todos, escritura solo profesor
 create policy "bloques_select" on bloques_lectivos for select using (auth.uid() is not null);
 create policy "bloques_write_profesor" on bloques_lectivos for all using (is_profesor());
 
--- REGISTROS: alumno ve los suyos (donde participa) + el profesor ve todos
+-- REGISTROS: alumno ve los suyos (donde participa, o los que ha creado él
+-- mismo -- esto último hace falta para que, justo al crearlo, Postgres
+-- pueda devolver la fila con RETURNING sin lanzar un error de RLS) + el
+-- profesor ve todos.
 create policy "registros_select" on registros for select
   using (
     is_profesor()
+    or creado_por = auth.uid()
     or exists (select 1 from registro_alumnos ra where ra.registro_id = registros.id and ra.alumno_id = auth.uid())
   );
 create policy "registros_insert" on registros for insert
@@ -132,17 +178,34 @@ create policy "registros_insert" on registros for insert
 create policy "registros_update" on registros for update
   using (
     is_profesor()
+    or creado_por = auth.uid()
     or exists (select 1 from registro_alumnos ra where ra.registro_id = registros.id and ra.alumno_id = auth.uid())
   );
 
--- REGISTRO_ALUMNOS: cada alumno ve/edita su propia fila; ve las de compañeros del mismo registro; profesor ve todo
+-- El profesor puede borrar cualquier registro en cualquier momento; el
+-- alumno solo puede borrar los suyos si TODAVÍA no han sido revisados.
+create policy "registros_delete" on registros for delete
+  using (
+    is_profesor()
+    or (
+      estado <> 'revisado'
+      and (
+        creado_por = auth.uid()
+        or exists (select 1 from registro_alumnos ra where ra.registro_id = registros.id and ra.alumno_id = auth.uid())
+      )
+    )
+  );
+
+-- función auxiliar: ¿el usuario actual es profesor? (definida arriba)
+
+-- REGISTRO_ALUMNOS: cada alumno ve su propia fila; el profesor ve todas.
+-- (Nota: la app no muestra a un alumno las filas de sus compañeros de
+-- grupo, solo el profesor las ve todas, así que no hace falta una
+-- consulta que se referencie a sí misma -- eso causaba recursión infinita.)
 create policy "registro_alumnos_select" on registro_alumnos for select
   using (
     is_profesor()
-    or exists (
-      select 1 from registro_alumnos ra2
-      where ra2.registro_id = registro_alumnos.registro_id and ra2.alumno_id = auth.uid()
-    )
+    or alumno_id = auth.uid()
   );
 create policy "registro_alumnos_insert" on registro_alumnos for insert
   with check (alumno_id = auth.uid());

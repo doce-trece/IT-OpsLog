@@ -163,7 +163,37 @@ plantilla y remitente por defecto en el plan gratuito). Si prefieres que
 los correos salgan con el dominio/remitente de tu centro, en Authentication
 → Emails puedes configurar un servidor SMTP propio más adelante.*
 
-## 8. Cómo funciona el flujo
+## 9. Funcionalidades avanzadas (v7)
+
+Ejecuta `sql/fix_v7_funcionalidades_avanzadas.sql` en el SQL Editor de
+Supabase para activar todo esto:
+
+- **Equipos editables por cualquiera, con historial**: alumnos y profesor
+  pueden dar de alta o editar equipos. Cada cambio guarda automáticamente
+  el estado anterior en `equipos_historial`, con quién lo hizo y cuándo
+  (columna `ultima_modificacion_por/en` en `equipos`, y botón "Historial"
+  en el panel de equipos).
+- **Nuevos estados del equipo** (de más dañado/rojo a mejor/verde):
+  desmontado y no funcional → … → montado y funcional. Se definen en
+  `src/lib/estados.js`.
+- **Quién ha ayudado**: si se marca "ayuda recibida", aparece un selector
+  con el nombre de la persona (alumno o profesor) que ayudó.
+- **Desperfecto marcable en cualquier momento**: ya no hace falta esperar
+  a cerrar la operación, hay un checkbox visible durante todo el trabajo.
+- **Continuidad del diario entre bloques**: si un alumno vuelve a coger el
+  mismo equipo y su última sesión con él NO quedó "terminada y revisada",
+  el nuevo registro arranca con lo que ya había escrito. Si sí quedó
+  terminada y revisada, empieza en blanco.
+- **Borrado de registros**: el alumno puede borrar los suyos mientras no
+  estén revisados; el profesor puede borrar o marcar como revisado
+  cualquier registro en cualquier momento, esté "abierto" o "en revisión".
+- **Panel del profesor ampliado**: pestañas "Abiertas ahora", "Pendientes
+  de revisar", "Histórico completo", "Por alumno" (con el tiempo total
+  empleado) y "Por equipo" (histórico de ese equipo en concreto). Cada
+  registro de la lista muestra si está terminado (✓) y si tiene un
+  desperfecto marcado (⚠).
+
+## 10. Cómo funciona el flujo
 
 - **Alumno**: entra → ve el bloque lectivo actual → elige un equipo libre (o
   se une a uno "ocupado" si un compañero ya abrió un registro en grupo) →

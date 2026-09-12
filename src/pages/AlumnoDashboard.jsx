@@ -1,21 +1,18 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { obtenerBloqueActual, cerrarRegistrosVencidos } from '../lib/bloques'
-
-const ESTADOS_EQUIPO_FINAL = [
-  { value: 'completamente_desmontado', label: 'Completamente / casi completamente desmontado' },
-  { value: 'parcialmente_desmontado', label: 'Parcialmente desmontado' },
-  { value: 'piezas_fuera', label: 'Con piezas fuera' },
-  { value: 'montado', label: 'Montado' },
-]
+import { ESTADOS_EQUIPO_FINAL } from '../lib/estados'
+import FormularioEquipo from '../components/FormularioEquipo.jsx'
 
 export default function AlumnoDashboard({ perfil }) {
   const [cargando, setCargando] = useState(true)
   const [equipos, setEquipos] = useState([])
+  const [personas, setPersonas] = useState([])
   const [bloqueActual, setBloqueActual] = useState(null)
-  const [registroActivo, setRegistroActivo] = useState(null) // {registro, miParticipacion}
-  const [registroPendiente, setRegistroPendiente] = useState(null) // en_revision, sin validar
-  const [equipoParaUnirse, setEquipoParaUnirse] = useState(null) // registro abierto de un compañero
+  const [registroActivo, setRegistroActivo] = useState(null) // {registro, participacion}
+  const [registroPendiente, setRegistroPendiente] = useState(null)
+  const [equipoParaUnirse, setEquipoParaUnirse] = useState(null)
+  const [editandoEquipo, setEditandoEquipo] = useState(null) // id de equipo o 'nuevo'
 
   const cargarTodo = useCallback(async () => {
     setCargando(true)
@@ -26,7 +23,9 @@ export default function AlumnoDashboard({ perfil }) {
     const { data: eq } = await supabase.from('equipos').select('*').order('codigo')
     setEquipos(eq || [])
 
-    // ¿Tengo algún registro en_revision pendiente de que el profesor lo valide?
+    const { data: todasLasPersonas } = await supabase.from('profiles').select('id, nombre, rol').order('nombre')
+    setPersonas(todasLasPersonas || [])
+
     const { data: misParticipaciones } = await supabase
       .from('registro_alumnos')
       .select('*, registros(*)')
@@ -36,11 +35,7 @@ export default function AlumnoDashboard({ perfil }) {
     setRegistroPendiente(pendiente || null)
 
     const abierto = (misParticipaciones || []).find(p => p.registros?.estado === 'abierto')
-    if (abierto) {
-      setRegistroActivo({ registro: abierto.registros, participacion: abierto })
-    } else {
-      setRegistroActivo(null)
-    }
+    setRegistroActivo(abierto ? { registro: abierto.registros, participacion: abierto } : null)
 
     setCargando(false)
   }, [perfil.id])
@@ -48,7 +43,6 @@ export default function AlumnoDashboard({ perfil }) {
   useEffect(() => { cargarTodo() }, [cargarTodo])
 
   async function elegirEquipo(equipo) {
-    // ¿Hay ya un registro "abierto" de un compañero sobre este equipo? (trabajo en grupo)
     const { data: registroExistente } = await supabase
       .from('registros')
       .select('*')
@@ -75,10 +69,34 @@ export default function AlumnoDashboard({ perfil }) {
 
     if (error) { alert('Error creando el registro: ' + error.message); return }
 
+    // Continuidad del diario: si ya trabajaste antes en este mismo equipo y
+    // aquello NO quedó terminado y revisado, arrastramos lo que escribiste.
+    const { data: registrosPrevios } = await supabase
+      .from('registros')
+      .select('*, registro_alumnos(*)')
+      .eq('equipo_id', equipo.id)
+      .eq('creado_por', perfil.id)
+      .neq('id', nuevoRegistro.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+
+    const anterior = registrosPrevios?.[0]
+    const cerradoDelTodo = anterior && anterior.terminado === true && anterior.estado === 'revisado'
+    const participacionAnterior = anterior && !cerradoDelTodo
+      ? anterior.registro_alumnos.find(ra => ra.alumno_id === perfil.id)
+      : null
+
     await supabase.from('registro_alumnos').insert({
       registro_id: nuevoRegistro.id,
       alumno_id: perfil.id,
+      descripcion_operaciones: participacionAnterior?.descripcion_operaciones || null,
+      problemas_encontrados: participacionAnterior?.problemas_encontrados || null,
+      resultados_obtenidos: participacionAnterior?.resultados_obtenidos || null,
     })
+
+    if (anterior && !cerradoDelTodo && anterior.desperfecto) {
+      await supabase.from('registros').update({ desperfecto: true }).eq('id', nuevoRegistro.id)
+    }
 
     await supabase.from('equipos').update({ estado: 'ocupado' }).eq('id', equipo.id)
     await cargarTodo()
@@ -95,6 +113,14 @@ export default function AlumnoDashboard({ perfil }) {
     await cargarTodo()
   }
 
+  async function eliminarRegistro(registro) {
+    if (!window.confirm('¿Seguro que quieres eliminar por completo este registro? No se puede deshacer.')) return
+    const { error } = await supabase.from('registros').delete().eq('id', registro.id)
+    if (error) { alert('No se pudo eliminar: ' + error.message); return }
+    await supabase.from('equipos').update({ estado: 'libre' }).eq('id', registro.equipo_id)
+    await cargarTodo()
+  }
+
   if (cargando) return <p>Cargando…</p>
 
   if (registroPendiente) {
@@ -105,6 +131,9 @@ export default function AlumnoDashboard({ perfil }) {
           Terminaste tu operación sobre el equipo, pero tu profesor/a todavía no la ha
           revisado. En cuanto la valide podrás elegir un equipo nuevo (o repetir el mismo).
         </p>
+        <button className="peligro" onClick={() => eliminarRegistro(registroPendiente.registros)}>
+          Eliminar este registro
+        </button>
       </div>
     )
   }
@@ -127,8 +156,9 @@ export default function AlumnoDashboard({ perfil }) {
       <OperacionActiva
         registro={registroActivo.registro}
         participacion={registroActivo.participacion}
-        perfil={perfil}
+        personas={personas.filter(p => p.id !== perfil.id)}
         onCerrado={cargarTodo}
+        onEliminar={() => eliminarRegistro(registroActivo.registro)}
       />
     )
   }
@@ -140,49 +170,72 @@ export default function AlumnoDashboard({ perfil }) {
           ? <span>Bloque lectivo actual: <strong>{bloqueActual.nombre}</strong></span>
           : <span>No hay un bloque lectivo activo ahora mismo. Si tu profesor/a lo permite, puedes registrar una operación fuera de bloque.</span>}
       </div>
-      <h2>Elige un equipo</h2>
+
+      {editandoEquipo && (
+        <FormularioEquipo
+          equipo={editandoEquipo === 'nuevo' ? null : equipos.find(e => e.id === editandoEquipo)}
+          onGuardado={() => { setEditandoEquipo(null); cargarTodo() }}
+          onCancelar={() => setEditandoEquipo(null)}
+        />
+      )}
+
+      <div className="cabecera-equipos">
+        <h2>Elige un equipo</h2>
+        <button className="secundario" onClick={() => setEditandoEquipo('nuevo')}>+ Añadir equipo</button>
+      </div>
       <div className="grid-equipos">
         {equipos.map(eq => (
-          <button
-            key={eq.id}
-            className={`equipo-card estado-${eq.estado}`}
-            disabled={eq.estado === 'en_revision'}
-            onClick={() => elegirEquipo(eq)}
-          >
-            <strong>{eq.codigo}</strong>
-            <span>{eq.tipo} {eq.modelo_basico}</span>
-            {(eq.ram || eq.disco || eq.procesador) && (
-              <span className="muted ficha-tecnica">
-                {[eq.procesador, eq.ram, eq.disco].filter(Boolean).join(' · ')}
+          <div key={eq.id} className={`equipo-card estado-${eq.estado}`}>
+            <button
+              className="equipo-card-boton"
+              disabled={eq.estado === 'en_revision'}
+              onClick={() => elegirEquipo(eq)}
+            >
+              <strong>{eq.codigo}</strong>
+              <span>{eq.tipo} {eq.modelo_basico}</span>
+              {(eq.ram || eq.disco || eq.procesador) && (
+                <span className="muted ficha-tecnica">
+                  {[eq.procesador, eq.ram, eq.disco].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              {eq.notas_inventario && (
+                <span className="aviso-equipo">⚠ {eq.notas_inventario}</span>
+              )}
+              <span className="badge">
+                {eq.estado === 'libre' && 'Libre'}
+                {eq.estado === 'ocupado' && 'Ocupado (grupo) — toca para unirte'}
+                {eq.estado === 'en_revision' && 'En revisión del profesor'}
               </span>
-            )}
-            {eq.notas_inventario && (
-              <span className="aviso-equipo">⚠ {eq.notas_inventario}</span>
-            )}
-            <span className="badge">
-              {eq.estado === 'libre' && 'Libre'}
-              {eq.estado === 'ocupado' && 'Ocupado (grupo) — toca para unirte'}
-              {eq.estado === 'en_revision' && 'En revisión del profesor'}
-            </span>
-          </button>
+            </button>
+            <button className="link-btn editar-equipo" onClick={() => setEditandoEquipo(eq.id)}>Editar ficha del equipo</button>
+          </div>
         ))}
-        {equipos.length === 0 && <p>Todavía no hay equipos cargados. Pídeselo a tu profesor/a.</p>}
+        {equipos.length === 0 && <p>Todavía no hay equipos cargados. Añade el primero con el botón de arriba.</p>}
       </div>
     </div>
   )
 }
 
-function OperacionActiva({ registro, participacion, perfil, onCerrado }) {
+function OperacionActiva({ registro, participacion, personas, onCerrado, onEliminar }) {
   const [descripcion, setDescripcion] = useState(participacion.descripcion_operaciones || '')
   const [problemas, setProblemas] = useState(participacion.problemas_encontrados || '')
   const [resultados, setResultados] = useState(participacion.resultados_obtenidos || '')
   const [guardando, setGuardando] = useState(false)
 
+  const [desperfecto, setDesperfecto] = useState(registro.desperfecto || false)
+
   const [mostrarCierre, setMostrarCierre] = useState(false)
   const [estadoFinal, setEstadoFinal] = useState('')
-  const [desperfecto, setDesperfecto] = useState(false)
   const [terminado, setTerminado] = useState(true)
   const [ayuda, setAyuda] = useState(false)
+  const [ayudaDe, setAyudaDe] = useState('')
+
+  const huboDatosPrevios = Boolean(participacion.descripcion_operaciones || participacion.problemas_encontrados || participacion.resultados_obtenidos)
+
+  async function toggleDesperfecto(checked) {
+    setDesperfecto(checked)
+    await supabase.from('registros').update({ desperfecto: checked }).eq('id', registro.id)
+  }
 
   async function guardarParticipacion() {
     setGuardando(true)
@@ -200,6 +253,7 @@ function OperacionActiva({ registro, participacion, perfil, onCerrado }) {
 
   async function finalizarOperacion() {
     if (!estadoFinal) { alert('Indica en qué estado queda el equipo.'); return }
+    if (ayuda && !ayudaDe) { alert('Indica quién te ha ayudado.'); return }
     await guardarParticipacion()
 
     await supabase
@@ -211,14 +265,11 @@ function OperacionActiva({ registro, participacion, perfil, onCerrado }) {
         desperfecto,
         terminado,
         ayuda_recibida: ayuda,
+        ayuda_recibida_de: ayuda ? ayudaDe : null,
       })
       .eq('id', registro.id)
 
-    await supabase
-      .from('equipos')
-      .update({ estado: 'en_revision' })
-      .eq('id', registro.equipo_id)
-
+    await supabase.from('equipos').update({ estado: 'en_revision' }).eq('id', registro.equipo_id)
     onCerrado()
   }
 
@@ -226,6 +277,16 @@ function OperacionActiva({ registro, participacion, perfil, onCerrado }) {
     <div className="operacion-activa">
       <h2>Operación en curso</h2>
       <p className="muted">Inicio: {new Date(registro.fecha_inicio).toLocaleString('es-ES')}</p>
+      {huboDatosPrevios && (
+        <div className="aviso-inline">
+          📓 Se han cargado los apuntes de tu última sesión con este equipo porque aún no se dio por terminada y revisada. Puedes seguir editándolos.
+        </div>
+      )}
+
+      <label className="checkbox destacado">
+        <input type="checkbox" checked={desperfecto} onChange={e => toggleDesperfecto(e.target.checked)} />
+        Se ha producido algún desperfecto o incidencia (puedes marcarlo en cualquier momento)
+      </label>
 
       <label>
         Describe las operaciones que has realizado
@@ -246,9 +307,14 @@ function OperacionActiva({ registro, participacion, perfil, onCerrado }) {
       <hr />
 
       {!mostrarCierre ? (
-        <button className="finalizar" onClick={() => setMostrarCierre(true)}>
-          Finalizar operación sobre el equipo
-        </button>
+        <div className="botones">
+          <button className="finalizar" onClick={() => setMostrarCierre(true)}>
+            Finalizar operación sobre el equipo
+          </button>
+          <button className="peligro secundario" onClick={onEliminar}>
+            Eliminar este registro
+          </button>
+        </div>
       ) : (
         <div className="cierre-box">
           <h3>Cerrar operación</h3>
@@ -257,13 +323,9 @@ function OperacionActiva({ registro, participacion, perfil, onCerrado }) {
             <select value={estadoFinal} onChange={e => setEstadoFinal(e.target.value)}>
               <option value="">Selecciona…</option>
               {ESTADOS_EQUIPO_FINAL.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
+                <option key={o.value} value={o.value} style={{ color: o.color }}>{o.label}</option>
               ))}
             </select>
-          </label>
-          <label className="checkbox">
-            <input type="checkbox" checked={desperfecto} onChange={e => setDesperfecto(e.target.checked)} />
-            Se ha producido algún desperfecto o incidencia
           </label>
           <label className="checkbox">
             <input type="checkbox" checked={terminado} onChange={e => setTerminado(e.target.checked)} />
@@ -273,6 +335,17 @@ function OperacionActiva({ registro, participacion, perfil, onCerrado }) {
             <input type="checkbox" checked={ayuda} onChange={e => setAyuda(e.target.checked)} />
             Hemos recibido ayuda de un compañero/a o profesor/a
           </label>
+          {ayuda && (
+            <label>
+              ¿De quién?
+              <select value={ayudaDe} onChange={e => setAyudaDe(e.target.value)}>
+                <option value="">Selecciona…</option>
+                {personas.map(p => (
+                  <option key={p.id} value={p.id}>{p.nombre}{p.rol === 'profesor' ? ' (profesor/a)' : ''}</option>
+                ))}
+              </select>
+            </label>
+          )}
           <p className="muted">
             Al confirmar, el equipo quedará "en revisión" hasta que tu profesor/a lo valide.
             No podrás elegir un equipo nuevo hasta entonces.
