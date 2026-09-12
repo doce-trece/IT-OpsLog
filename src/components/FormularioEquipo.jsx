@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { subirFoto } from '../lib/fotos'
 
 export default function FormularioEquipo({ equipo, onGuardado, onCancelar }) {
   const vacio = { codigo: '', tipo: '', modelo_basico: '', modelo: '', sn: '', product_id: '', educa_serial: '', ram: '', disco: '', procesador: '', notas_inventario: '', origen: '', anio_entrada_taller: '' }
@@ -11,6 +12,8 @@ export default function FormularioEquipo({ equipo, onGuardado, onCancelar }) {
     origen: equipo.origen || '', anio_entrada_taller: equipo.anio_entrada_taller || '',
   } : vacio)
   const [guardando, setGuardando] = useState(false)
+  const [foto, setFoto] = useState(null)
+  const [subiendoFoto, setSubiendoFoto] = useState(false)
 
   function campo(clave, placeholder) {
     return (
@@ -26,7 +29,16 @@ export default function FormularioEquipo({ equipo, onGuardado, onCancelar }) {
     e.preventDefault()
     if (!form.codigo.trim()) { alert('El código (ID) es obligatorio.'); return }
     setGuardando(true)
-    const datos = { ...form, anio_entrada_taller: form.anio_entrada_taller ? Number(form.anio_entrada_taller) : null }
+
+    let foto_url = equipo?.foto_url || null
+    if (foto) {
+      setSubiendoFoto(true)
+      const url = await subirFoto(foto, 'equipos')
+      setSubiendoFoto(false)
+      if (url) foto_url = url
+    }
+
+    const datos = { ...form, anio_entrada_taller: form.anio_entrada_taller ? Number(form.anio_entrada_taller) : null, foto_url }
     const { error } = equipo
       ? await supabase.from('equipos').update(datos).eq('id', equipo.id)
       : await supabase.from('equipos').insert(datos)
@@ -51,8 +63,13 @@ export default function FormularioEquipo({ equipo, onGuardado, onCancelar }) {
       {campo('origen', 'Origen')}
       {campo('anio_entrada_taller', 'Año de entrada al taller')}
       {campo('notas_inventario', 'Notas / incidencias conocidas')}
+      <label>
+        Foto del equipo
+        {equipo?.foto_url && <img src={equipo.foto_url} alt="" className="foto-previa" />}
+        <input type="file" accept="image/*" onChange={e => setFoto(e.target.files[0] || null)} />
+      </label>
       <div className="botones">
-        <button type="submit" disabled={guardando}>{guardando ? 'Guardando…' : 'Guardar'}</button>
+        <button type="submit" disabled={guardando}>{guardando ? (subiendoFoto ? 'Subiendo foto…' : 'Guardando…') : 'Guardar'}</button>
         <button type="button" className="secundario" onClick={onCancelar}>Cancelar</button>
       </div>
     </form>

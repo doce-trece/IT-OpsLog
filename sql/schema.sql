@@ -33,6 +33,8 @@ create table if not exists equipos (
     check (estado in ('libre','ocupado','en_revision')),
   ultima_modificacion_por uuid references profiles(id),
   ultima_modificacion_en timestamptz,
+  ultimo_estado_funcional text,
+  foto_url text,
   created_at timestamptz default now()
 );
 
@@ -91,6 +93,8 @@ create table if not exists registros (
   terminado boolean default false,
   ayuda_recibida boolean default false,
   ayuda_recibida_de uuid references profiles(id),
+  titulo text,
+  registro_anterior_id bigint references registros(id),
   cerrado_automaticamente boolean default false,
   revisado_por uuid references profiles(id),
   revisado_en timestamptz,
@@ -106,6 +110,7 @@ create table if not exists registro_alumnos (
   descripcion_operaciones text,
   problemas_encontrados text,
   resultados_obtenidos text,
+  foto_url text,
   updated_at timestamptz default now(),
   unique (registro_id, alumno_id)
 );
@@ -175,12 +180,11 @@ create policy "registros_select" on registros for select
   );
 create policy "registros_insert" on registros for insert
   with check (auth.uid() is not null);
+-- El cierre automático de bloque puede correr desde la sesión de
+-- cualquier usuario, no solo del dueño del registro, así que el update
+-- se deja abierto a cualquier autenticado.
 create policy "registros_update" on registros for update
-  using (
-    is_profesor()
-    or creado_por = auth.uid()
-    or exists (select 1 from registro_alumnos ra where ra.registro_id = registros.id and ra.alumno_id = auth.uid())
-  );
+  using (auth.uid() is not null);
 
 -- El profesor puede borrar cualquier registro en cualquier momento; el
 -- alumno solo puede borrar los suyos si TODAVÍA no han sido revisados.
@@ -207,8 +211,10 @@ create policy "registro_alumnos_select" on registro_alumnos for select
     is_profesor()
     or alumno_id = auth.uid()
   );
+-- Igual que arriba: el cierre automático necesita poder crear la
+-- participación de continuación en nombre de otro alumno.
 create policy "registro_alumnos_insert" on registro_alumnos for insert
-  with check (alumno_id = auth.uid());
+  with check (auth.uid() is not null);
 create policy "registro_alumnos_update_own" on registro_alumnos for update
   using (alumno_id = auth.uid());
 
@@ -238,6 +244,20 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function handle_new_user();
+
+-- =====================================================================
+-- Almacenamiento de fotos (ficha del equipo y fotos de operaciones)
+-- =====================================================================
+insert into storage.buckets (id, name, public)
+values ('fotos', 'fotos', true)
+on conflict (id) do nothing;
+
+create policy "fotos_lectura_publica" on storage.objects for select
+  using (bucket_id = 'fotos');
+create policy "fotos_subida_autenticados" on storage.objects for insert
+  with check (bucket_id = 'fotos' and auth.uid() is not null);
+create policy "fotos_actualizacion_autenticados" on storage.objects for update
+  using (bucket_id = 'fotos' and auth.uid() is not null);
 
 -- =====================================================================
 -- Datos de ejemplo para bloques lectivos (ajusta a tu horario real)

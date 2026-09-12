@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { cerrarRegistrosVencidos } from '../lib/bloques'
-import { etiquetaEstadoEquipo, colorEstadoEquipo, formatearDuracion } from '../lib/estados'
+import { ESTADOS_EQUIPO_FINAL, etiquetaEstadoEquipo, colorEstadoEquipo, formatearDuracion } from '../lib/estados'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
 
 export default function ProfesorDashboard({ perfil }) {
@@ -13,6 +13,10 @@ export default function ProfesorDashboard({ perfil }) {
   const [seleccionado, setSeleccionado] = useState(null)
   const [alumnoFiltro, setAlumnoFiltro] = useState(null)
   const [equipoFiltro, setEquipoFiltro] = useState(null)
+  const [equipoEditando, setEquipoEditando] = useState(null) // id o 'nuevo', para el panel de Equipos
+
+  const irAEquipos = () => { setVista('equipos'); setSeleccionado(null); setEquipoEditando(null) }
+  const irAPorAlumno = () => { setVista('porAlumno'); setSeleccionado(null) }
 
   const cargar = useCallback(async () => {
     setCargando(true)
@@ -54,6 +58,10 @@ export default function ProfesorDashboard({ perfil }) {
   return (
     <div className="profesor-grid">
       <aside>
+        <div className="accesos-rapidos">
+          <button className="icono-acceso" title="Ir a gestión de equipos" onClick={irAEquipos}>🖥️ Equipos</button>
+          <button className="icono-acceso" title="Ir a por alumno" onClick={irAPorAlumno}>👤 Por alumno</button>
+        </div>
         <nav className="tabs">
           <button className={vista === 'abiertas' ? 'activo' : ''} onClick={() => { setVista('abiertas'); setSeleccionado(null) }}>
             🟢 Abiertas ahora ({abiertas.length})
@@ -64,19 +72,19 @@ export default function ProfesorDashboard({ perfil }) {
           <button className={vista === 'historico' ? 'activo' : ''} onClick={() => { setVista('historico'); setSeleccionado(null) }}>
             Histórico completo
           </button>
-          <button className={vista === 'porAlumno' ? 'activo' : ''} onClick={() => { setVista('porAlumno'); setSeleccionado(null) }}>
+          <button className={vista === 'porAlumno' ? 'activo' : ''} onClick={irAPorAlumno}>
             Por alumno
           </button>
           <button className={vista === 'porEquipo' ? 'activo' : ''} onClick={() => { setVista('porEquipo'); setSeleccionado(null) }}>
             Por equipo
           </button>
-          <button className={vista === 'equipos' ? 'activo' : ''} onClick={() => { setVista('equipos'); setSeleccionado(null) }}>
+          <button className={vista === 'equipos' ? 'activo' : ''} onClick={irAEquipos}>
             Equipos
           </button>
         </nav>
 
         {vista === 'porAlumno' && (
-          <select className="selector-filtro" value={alumnoFiltro || ''} onChange={e => setAlumnoFiltro(e.target.value || null)}>
+          <select className="selector-filtro" value={alumnoFiltro || ''} onChange={e => { setAlumnoFiltro(e.target.value || null); setSeleccionado(null) }}>
             <option value="">Elige un alumno…</option>
             {alumnos.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
           </select>
@@ -94,7 +102,7 @@ export default function ProfesorDashboard({ perfil }) {
           </p>
         )}
 
-        {vista !== 'equipos' && (
+        {vista !== 'equipos' && vista !== 'porAlumno' && (
           <ul className="lista-registros">
             {cargando && <li className="muted">Cargando…</li>}
             {!cargando && listaVisible.length === 0 && <li className="muted">Nada que mostrar</li>}
@@ -104,7 +112,7 @@ export default function ProfesorDashboard({ perfil }) {
                   className={`item-registro estado-${r.estado} ${seleccionado?.id === r.id ? 'seleccionado' : ''}`}
                   onClick={() => setSeleccionado(r)}
                 >
-                  <strong>{r.equipos?.codigo} · {r.equipos?.tipo} {r.equipos?.modelo_basico}</strong>
+                  <strong>{r.titulo || `${r.equipos?.codigo} · ${r.equipos?.tipo} ${r.equipos?.modelo_basico}`}</strong>
                   <span className="fila-badges">
                     <span className="badge">{r.estado}</span>
                     {r.terminado && <span className="badge badge-terminado">✓ Terminado</span>}
@@ -119,12 +127,53 @@ export default function ProfesorDashboard({ perfil }) {
             ))}
           </ul>
         )}
-
-        {vista === 'equipos' && <GestionEquipos equipos={equipos} personasPorId={personasPorId} onCambio={cargar} />}
       </aside>
 
       <section className="detalle">
-        {vista !== 'equipos' && seleccionado && (
+        {vista === 'equipos' && (
+          <GestionEquipos
+            equipos={equipos}
+            personasPorId={personasPorId}
+            onCambio={cargar}
+            editando={equipoEditando}
+            setEditando={setEquipoEditando}
+          />
+        )}
+
+        {vista === 'porAlumno' && !alumnoFiltro && <p className="muted">Elige un alumno en la lista de la izquierda.</p>}
+
+        {vista === 'porAlumno' && alumnoFiltro && !seleccionado && (
+          <div className="lista-central">
+            <h2>{personasPorId[alumnoFiltro]?.nombre}</h2>
+            {listaVisible.length === 0 && <p className="muted">Este alumno todavía no tiene registros.</p>}
+            {listaVisible.map(r => (
+              <button key={r.id} className={`item-registro-central estado-${r.estado}`} onClick={() => setSeleccionado(r)}>
+                <strong>{r.titulo || `${r.equipos?.codigo} · ${r.equipos?.tipo} ${r.equipos?.modelo_basico}`}</strong>
+                <span className="fila-badges">
+                  <span className="badge">{r.estado}</span>
+                  {r.terminado && <span className="badge badge-terminado">✓ Terminado</span>}
+                  {r.desperfecto && <span className="badge badge-desperfecto">⚠ Desperfecto</span>}
+                </span>
+                <span className="muted">{new Date(r.created_at).toLocaleString('es-ES')} · {formatearDuracion(duracionMs(r))}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {vista === 'porAlumno' && seleccionado && (
+          <div>
+            <button className="link-btn" onClick={() => setSeleccionado(null)}>← Volver a los registros de {personasPorId[alumnoFiltro]?.nombre}</button>
+            <DetalleRegistro
+              key={seleccionado.id}
+              registro={seleccionado}
+              perfil={perfil}
+              personasPorId={personasPorId}
+              onCambio={() => { setSeleccionado(null); cargar() }}
+            />
+          </div>
+        )}
+
+        {vista !== 'equipos' && vista !== 'porAlumno' && seleccionado && (
           <DetalleRegistro
             key={seleccionado.id}
             registro={seleccionado}
@@ -133,7 +182,7 @@ export default function ProfesorDashboard({ perfil }) {
             onCambio={() => { setSeleccionado(null); cargar() }}
           />
         )}
-        {vista !== 'equipos' && !seleccionado && <p className="muted">Selecciona un registro de la lista.</p>}
+        {vista !== 'equipos' && vista !== 'porAlumno' && !seleccionado && <p className="muted">Selecciona un registro de la lista.</p>}
       </section>
     </div>
   )
@@ -149,6 +198,8 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
   const [nuevaNota, setNuevaNota] = useState('')
   const [notas, setNotas] = useState(registro.notas_profesor || [])
   const [guardandoNota, setGuardandoNota] = useState(false)
+  const [editandoEstado, setEditandoEstado] = useState(false)
+  const [estadoNuevo, setEstadoNuevo] = useState(registro.estado_equipo_final || '')
 
   async function guardarNota() {
     if (!nuevaNota.trim()) return
@@ -167,9 +218,26 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
   async function marcarRevisado() {
     await supabase
       .from('registros')
-      .update({ estado: 'revisado', revisado_por: perfil.id, revisado_en: new Date().toISOString() })
+      .update({ estado: 'revisado', terminado: true, revisado_por: perfil.id, revisado_en: new Date().toISOString() })
       .eq('id', registro.id)
+
+    // Al revisar el último registro de un equipo, se dan por revisados
+    // también todos los anteriores en_revision de ese mismo equipo (la
+    // cadena de sesiones que llevaban trabajando sobre él).
+    await supabase
+      .from('registros')
+      .update({ estado: 'revisado', terminado: true, revisado_por: perfil.id, revisado_en: new Date().toISOString() })
+      .eq('equipo_id', registro.equipo_id)
+      .eq('estado', 'en_revision')
+
     await supabase.from('equipos').update({ estado: 'libre' }).eq('id', registro.equipo_id)
+    onCambio()
+  }
+
+  async function guardarEstadoEquipo() {
+    await supabase.from('registros').update({ estado_equipo_final: estadoNuevo }).eq('id', registro.id)
+    await supabase.from('equipos').update({ ultimo_estado_funcional: estadoNuevo }).eq('id', registro.equipo_id)
+    setEditandoEstado(false)
     onCambio()
   }
 
@@ -202,16 +270,31 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
           {registro.estado_equipo_final
             ? <span style={{ color: colorEstadoEquipo(registro.estado_equipo_final), fontWeight: 600 }}>{etiquetaEstadoEquipo(registro.estado_equipo_final)}</span>
             : '—'}
+          {' '}
+          <button className="link-btn" onClick={() => setEditandoEstado(v => !v)}>{editandoEstado ? 'cancelar' : 'cambiar'}</button>
         </span>
         <span><strong>Desperfecto/incidencia:</strong> {registro.desperfecto ? '⚠ Sí' : 'No'}</span>
         <span><strong>Terminado:</strong> {registro.terminado ? '✓ Sí' : 'No'}</span>
         <span><strong>Ayuda recibida:</strong> {registro.ayuda_recibida ? `Sí, de ${ayudaDeNombre || '—'}` : 'No'}</span>
       </div>
 
+      {editandoEstado && (
+        <div className="cierre-box">
+          <select value={estadoNuevo} onChange={e => setEstadoNuevo(e.target.value)}>
+            <option value="">Selecciona…</option>
+            {ESTADOS_EQUIPO_FINAL.map(o => (
+              <option key={o.value} value={o.value} style={{ color: o.color }}>{o.label}</option>
+            ))}
+          </select>
+          <button onClick={guardarEstadoEquipo}>Guardar estado del equipo</button>
+        </div>
+      )}
+
       <h3>Operaciones por alumno</h3>
       {registro.registro_alumnos.map(ra => (
         <div key={ra.id} className="participacion-alumno">
           <h4>{ra.profiles?.nombre}</h4>
+          {ra.foto_url && <img src={ra.foto_url} alt="" className="foto-miniatura-grande" />}
           <p><strong>Operaciones:</strong> {ra.descripcion_operaciones || '—'}</p>
           <p><strong>Problemas:</strong> {ra.problemas_encontrados || '—'}</p>
           <p><strong>Resultados:</strong> {ra.resultados_obtenidos || '—'}</p>
@@ -253,8 +336,7 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
   )
 }
 
-function GestionEquipos({ equipos, personasPorId, onCambio }) {
-  const [editando, setEditando] = useState(null) // id del equipo en edición, o 'nuevo'
+function GestionEquipos({ equipos, personasPorId, onCambio, editando, setEditando }) {
   const [historialDe, setHistorialDe] = useState(null)
   const [historial, setHistorial] = useState([])
 
@@ -287,6 +369,7 @@ function GestionEquipos({ equipos, personasPorId, onCambio }) {
         {equipos.map(e => (
           <li key={e.id} className="fila-equipo">
             <div className="fila-equipo-cabecera">
+              {e.foto_url && <img src={e.foto_url} alt="" className="foto-miniatura" />}
               <div>
                 <strong>{e.codigo}</strong> — {e.tipo} {e.modelo_basico}
                 {e.notas_inventario && <div className="muted">⚠ {e.notas_inventario}</div>}
