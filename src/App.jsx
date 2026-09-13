@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
+import { marcarActividadSesionActual } from './lib/sesiones'
 import Login from './pages/Login.jsx'
 import SetNewPassword from './pages/SetNewPassword.jsx'
 import AlumnoDashboard from './pages/AlumnoDashboard.jsx'
@@ -57,7 +58,7 @@ export default function App() {
         <h1>Taller — Registro de operaciones</h1>
         <div className="user-box">
           <span>{perfil.nombre} · {perfil.rol === 'profesor' ? 'Profesor/a' : 'Alumno/a'}</span>
-          <button onClick={() => supabase.auth.signOut()}>Cerrar sesión</button>
+          <button onClick={async () => { await marcarActividadSesionActual(supabase); await supabase.auth.signOut() }}>Cerrar sesión</button>
         </div>
       </header>
       <main>

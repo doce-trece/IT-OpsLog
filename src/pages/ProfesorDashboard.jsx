@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
-import { cerrarRegistrosVencidos } from '../lib/bloques'
 import { ESTADOS_EQUIPO_FINAL, etiquetaEstadoEquipo, colorEstadoEquipo, formatearDuracion } from '../lib/estados'
+import { calcularSesionesYDias, contarBloquesTranscurridos } from '../lib/sesiones'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
 
 export default function ProfesorDashboard({ perfil }) {
@@ -9,6 +9,7 @@ export default function ProfesorDashboard({ perfil }) {
   const [registros, setRegistros] = useState([])
   const [equipos, setEquipos] = useState([])
   const [personas, setPersonas] = useState([])
+  const [bloques, setBloques] = useState([])
   const [cargando, setCargando] = useState(true)
   const [seleccionado, setSeleccionado] = useState(null)
   const [alumnoFiltro, setAlumnoFiltro] = useState(null)
@@ -20,11 +21,10 @@ export default function ProfesorDashboard({ perfil }) {
 
   const cargar = useCallback(async () => {
     setCargando(true)
-    await cerrarRegistrosVencidos()
 
     const { data: reg } = await supabase
       .from('registros')
-      .select('*, equipos(codigo, tipo, modelo_basico), bloques_lectivos(nombre), registro_alumnos(*, profiles(nombre)), notas_profesor(*)')
+      .select('*, equipos(codigo, tipo, modelo_basico), registro_alumnos(*, profiles(nombre)), notas_profesor(*)')
       .order('created_at', { ascending: false })
     setRegistros(reg || [])
 
@@ -33,6 +33,9 @@ export default function ProfesorDashboard({ perfil }) {
 
     const { data: per } = await supabase.from('profiles').select('*').order('nombre')
     setPersonas(per || [])
+
+    const { data: bl } = await supabase.from('bloques_lectivos').select('*')
+    setBloques(bl || [])
 
     setCargando(false)
   }, [])
@@ -121,7 +124,11 @@ export default function ProfesorDashboard({ perfil }) {
                   <span className="muted">
                     {r.registro_alumnos.map(ra => ra.profiles?.nombre).join(', ')}
                   </span>
-                  <span className="muted">{new Date(r.created_at).toLocaleString('es-ES')} · {formatearDuracion(duracionMs(r))}</span>
+                  <span className="muted">
+                    Inicio: {new Date(r.fecha_inicio).toLocaleDateString('es-ES')}
+                    {' · '}{calcularSesionesYDias(r).diasCalendario}d
+                    {' · '}{contarBloquesTranscurridos(bloques, r)} ses.
+                  </span>
                 </button>
               </li>
             ))}
@@ -154,7 +161,11 @@ export default function ProfesorDashboard({ perfil }) {
                   {r.terminado && <span className="badge badge-terminado">✓ Terminado</span>}
                   {r.desperfecto && <span className="badge badge-desperfecto">⚠ Desperfecto</span>}
                 </span>
-                <span className="muted">{new Date(r.created_at).toLocaleString('es-ES')} · {formatearDuracion(duracionMs(r))}</span>
+                <span className="muted">
+                  Inicio: {new Date(r.fecha_inicio).toLocaleDateString('es-ES')}
+                  {' · '}{calcularSesionesYDias(r).diasCalendario}d
+                  {' · '}{contarBloquesTranscurridos(bloques, r)} ses.
+                </span>
               </button>
             ))}
           </div>
@@ -168,6 +179,7 @@ export default function ProfesorDashboard({ perfil }) {
               registro={seleccionado}
               perfil={perfil}
               personasPorId={personasPorId}
+              bloques={bloques}
               onCambio={() => { setSeleccionado(null); cargar() }}
             />
           </div>
@@ -179,6 +191,7 @@ export default function ProfesorDashboard({ perfil }) {
             registro={seleccionado}
             perfil={perfil}
             personasPorId={personasPorId}
+            bloques={bloques}
             onCambio={() => { setSeleccionado(null); cargar() }}
           />
         )}
@@ -194,7 +207,7 @@ function duracionMs(registro) {
   return fin - inicio
 }
 
-function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
+function DetalleRegistro({ registro, perfil, personasPorId, bloques, onCambio }) {
   const [nuevaNota, setNuevaNota] = useState('')
   const [notas, setNotas] = useState(registro.notas_profesor || [])
   const [guardandoNota, setGuardandoNota] = useState(false)
@@ -220,16 +233,6 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
       .from('registros')
       .update({ estado: 'revisado', terminado: true, revisado_por: perfil.id, revisado_en: new Date().toISOString() })
       .eq('id', registro.id)
-
-    // Al revisar el último registro de un equipo, se dan por revisados
-    // también todos los anteriores en_revision de ese mismo equipo (la
-    // cadena de sesiones que llevaban trabajando sobre él).
-    await supabase
-      .from('registros')
-      .update({ estado: 'revisado', terminado: true, revisado_por: perfil.id, revisado_en: new Date().toISOString() })
-      .eq('equipo_id', registro.equipo_id)
-      .eq('estado', 'en_revision')
-
     await supabase.from('equipos').update({ estado: 'libre' }).eq('id', registro.equipo_id)
     onCambio()
   }
@@ -248,21 +251,21 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
     onCambio()
   }
 
-  const ayudaDeNombre = registro.ayuda_recibida_de ? personasPorId[registro.ayuda_recibida_de]?.nombre : null
+  const ayudaDeNombres = (registro.ayuda_recibida_de || []).map(id => personasPorId[id]?.nombre).filter(Boolean).join(', ')
+  const { diasCalendario, diasTrabajados } = calcularSesionesYDias(registro)
+  const sesiones = contarBloquesTranscurridos(bloques, registro)
 
   return (
     <div>
       <h2>{registro.equipos?.codigo} · {registro.equipos?.tipo} {registro.equipos?.modelo_basico}</h2>
       <p className="muted">
-        {registro.bloques_lectivos?.nombre || (registro.fuera_de_bloque ? 'Fuera de bloque lectivo' : '—')}
-        {' · '}Inicio: {new Date(registro.fecha_inicio).toLocaleString('es-ES')}
-        {registro.fecha_fin && <> · Fin: {new Date(registro.fecha_fin).toLocaleString('es-ES')}</>}
+        Inicio: {new Date(registro.fecha_inicio).toLocaleString('es-ES')}
+        {registro.enviado_revision_en && <> · Enviado a revisión: {new Date(registro.enviado_revision_en).toLocaleString('es-ES')}</>}
+        {registro.revisado_en && <> · Revisado: {new Date(registro.revisado_en).toLocaleString('es-ES')}</>}
+        {' · '}Lleva abierto {diasCalendario} {diasCalendario === 1 ? 'día' : 'días'} ({diasTrabajados} con actividad)
+        {' · '}{sesiones} {sesiones === 1 ? 'sesión de aula' : 'sesiones de aula'}
         {' · '}Tiempo empleado: {formatearDuracion(duracionMs(registro))}
       </p>
-
-      {registro.cerrado_automaticamente && (
-        <div className="aviso-inline">⚠ Este registro se cerró automáticamente al terminar el bloque lectivo (el alumno no lo cerró a tiempo).</div>
-      )}
 
       <div className="resumen-cierre">
         <span>
@@ -275,7 +278,7 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
         </span>
         <span><strong>Desperfecto/incidencia:</strong> {registro.desperfecto ? '⚠ Sí' : 'No'}</span>
         <span><strong>Terminado:</strong> {registro.terminado ? '✓ Sí' : 'No'}</span>
-        <span><strong>Ayuda recibida:</strong> {registro.ayuda_recibida ? `Sí, de ${ayudaDeNombre || '—'}` : 'No'}</span>
+        <span><strong>Ayuda recibida:</strong> {registro.ayuda_recibida ? `Sí, de ${ayudaDeNombres || '—'}` : 'No'}</span>
       </div>
 
       {editandoEstado && (

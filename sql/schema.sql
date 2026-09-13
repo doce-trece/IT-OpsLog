@@ -78,10 +78,14 @@ create table if not exists bloques_lectivos (
 create table if not exists registros (
   id bigint generated always as identity primary key,
   equipo_id bigint not null references equipos(id),
-  bloque_lectivo_id bigint references bloques_lectivos(id),
-  fuera_de_bloque boolean not null default false,
+  bloque_lectivo_id bigint references bloques_lectivos(id), -- ya no se usa activamente
+  fuera_de_bloque boolean not null default false,            -- ya no se usa activamente
   fecha_inicio timestamptz not null default now(),
   fecha_fin timestamptz,
+  enviado_revision_en timestamptz,
+  dias_trabajados int not null default 1,
+  ultima_actividad_fecha date not null default current_date,
+  fechas_actividad date[] not null default array[current_date],
   estado text not null default 'abierto'
     check (estado in ('abierto','en_revision','revisado')),
   estado_equipo_final text
@@ -92,10 +96,10 @@ create table if not exists registros (
   desperfecto boolean default false,
   terminado boolean default false,
   ayuda_recibida boolean default false,
-  ayuda_recibida_de uuid references profiles(id),
+  ayuda_recibida_de uuid[],
   titulo text,
-  registro_anterior_id bigint references registros(id),
-  cerrado_automaticamente boolean default false,
+  registro_anterior_id bigint references registros(id), -- ya no se usa activamente
+  cerrado_automaticamente boolean default false,          -- ya no se usa activamente
   revisado_por uuid references profiles(id),
   revisado_en timestamptz,
   creado_por uuid references profiles(id),

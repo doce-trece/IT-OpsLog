@@ -193,7 +193,38 @@ Supabase para activar todo esto:
   registro de la lista muestra si está terminado (✓) y si tiene un
   desperfecto marcado (⚠).
 
-## 10. Cómo funciona el flujo
+## 11. Simplificación del modelo (v9)
+
+Ejecuta `sql/fix_v9_simplificacion.sql` en Supabase para aplicar este
+cambio de enfoque:
+
+- **Un único registro por equipo mientras dura el trabajo**: ya no se
+  crean registros nuevos al cambiar de bloque o de día. El mismo registro
+  se sigue editando todo el tiempo.
+- El alumno puede **enviarlo a revisión** cuando quiera (antes se llamaba
+  "finalizar"), pero **sigue pudiendo editarlo** después mientras el
+  profesor no lo marque como revisado. Ya no hace falta "reabrir".
+- Puede **eliminarlo** en cualquier momento mientras no esté revisado.
+- Se guardan las fechas de inicio, de envío a revisión y de revisión, y un
+  contador de **cuántos días distintos ha tenido actividad**, para poder
+  ver de un vistazo cuánto tiempo lleva un equipo entre manos.
+- **Ayuda de varias personas**: el checkbox de ayuda ahora despliega una
+  lista de personas (alumnos y profesor) para marcar a todas las que
+  ayudaron, no solo una.
+- Ya no se usan los bloques lectivos ni el cierre automático por horario
+  (las tablas siguen ahí por si se quieren recuperar más adelante, pero la
+  aplicación no las usa).
+
+## 13. Sesiones de aula reales, no por calendario (v10)
+
+Ejecuta `sql/fix_v10_fechas_actividad.sql` en Supabase. Antes, el conteo
+de "sesiones de aula" contaba todos los bloques del horario entre la fecha
+de inicio y ahora, aunque el alumno hubiera faltado algún día. Ahora se
+guarda la lista exacta de días en los que hubo actividad real (guardar
+algo, marcar un desperfecto, subir una foto...) y solo se cuentan los
+bloques de esos días concretos.
+
+## 14. Cómo funciona el flujo (actualizado)
 
 - **Alumno**: entra → ve el bloque lectivo actual → elige un equipo libre (o
   se une a uno "ocupado" si un compañero ya abrió un registro en grupo) →
