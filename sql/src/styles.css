@@ -1,0 +1,143 @@
+:root {
+  --azul: #2563eb;
+  --verde: #16a34a;
+  --naranja: #d97706;
+  --rojo: #dc2626;
+  --gris: #6b7280;
+  --fondo: #f3f4f6;
+  --borde: #e5e7eb;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--fondo); color: #111827; }
+
+.cargando { padding: 3rem; text-align: center; color: var(--gris); }
+
+.app-header {
+  display: flex; justify-content: space-between; align-items: center;
+  background: white; padding: 1rem 1.5rem; border-bottom: 1px solid var(--borde);
+}
+.app-header h1 { font-size: 1.1rem; margin: 0; }
+.user-box { display: flex; align-items: center; gap: 1rem; font-size: 0.9rem; }
+.user-box button { background: none; border: 1px solid var(--borde); border-radius: 6px; padding: 0.4rem 0.8rem; cursor: pointer; }
+
+main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+
+/* Login */
+.login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.login-box { background: white; padding: 2rem; border-radius: 12px; width: 320px; display: flex; flex-direction: column; gap: 0.9rem; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+.login-box h1 { font-size: 1.3rem; margin: 0; }
+.subtitle { color: var(--gris); margin: 0 0 0.5rem; font-size: 0.9rem; }
+.login-box label { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.9rem; }
+.login-box input { padding: 0.6rem; border: 1px solid var(--borde); border-radius: 6px; }
+.login-box button { background: var(--azul); color: white; border: none; padding: 0.7rem; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.error-msg { color: var(--rojo); font-size: 0.85rem; }
+.link-btn { background: none; border: none; color: var(--azul); cursor: pointer; font-size: 0.85rem; padding: 0.3rem 0; text-align: left; }
+
+/* Genéricos */
+button { font-family: inherit; }
+label { display: flex; flex-direction: column; gap: 0.3rem; margin-bottom: 0.9rem; font-size: 0.92rem; }
+textarea, select, input[type=text] { padding: 0.6rem; border: 1px solid var(--borde); border-radius: 6px; font-family: inherit; }
+.muted { color: var(--gris); font-size: 0.85rem; }
+.badge { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px; font-size: 0.75rem; background: var(--borde); }
+
+.bloque-info { background: white; border: 1px solid var(--borde); padding: 0.8rem 1rem; border-radius: 8px; margin-bottom: 1.2rem; }
+
+.grid-equipos { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 1rem; }
+.equipo-card {
+  background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1rem;
+  display: flex; flex-direction: column; gap: 0.35rem; text-align: left; cursor: pointer;
+}
+.equipo-card:disabled { opacity: 0.55; cursor: not-allowed; }
+.equipo-card.estado-libre .badge { background: #dcfce7; color: var(--verde); }
+.equipo-card.estado-ocupado .badge { background: #fef3c7; color: var(--naranja); }
+.equipo-card.estado-en_revision .badge { background: #fee2e2; color: var(--rojo); }
+.equipo-card .ficha-tecnica { font-size: 0.78rem; }
+.equipo-card .aviso-equipo { font-size: 0.78rem; color: #92400e; background: #fffbeb; padding: 0.25rem 0.4rem; border-radius: 4px; }
+
+.aviso-box { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1.5rem; max-width: 480px; }
+.aviso-inline { background: #fef3c7; color: #92400e; padding: 0.6rem 0.9rem; border-radius: 8px; margin: 0.8rem 0; font-size: 0.88rem; }
+
+.operacion-activa { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1.5rem; max-width: 640px; }
+.operacion-activa button:not(.secundario) { background: var(--azul); color: white; border: none; padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; }
+.operacion-activa hr { border: none; border-top: 1px solid var(--borde); margin: 1.2rem 0; }
+.finalizar { background: var(--rojo) !important; }
+.cierre-box { margin-top: 1rem; padding: 1rem; background: #fafafa; border-radius: 8px; }
+.checkbox { flex-direction: row; align-items: center; gap: 0.5rem; }
+.checkbox input { width: auto; }
+.botones { display: flex; gap: 0.6rem; margin-top: 0.8rem; }
+.secundario { background: white; border: 1px solid var(--borde); padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; }
+.peligro { background: white; color: var(--rojo); border: 1px solid var(--rojo); padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; }
+.peligro.secundario { background: white; }
+.cabecera-equipos { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+.equipo-card { padding: 0; overflow: hidden; }
+.equipo-card-boton { width: 100%; background: none; border: none; padding: 1rem; display: flex; flex-direction: column; gap: 0.35rem; text-align: left; cursor: pointer; }
+.equipo-card-boton:disabled { opacity: 0.55; cursor: not-allowed; }
+.editar-equipo { width: 100%; text-align: center; border-top: 1px solid var(--borde); padding: 0.4rem; font-size: 0.78rem; }
+.checkbox.destacado { background: #fffbeb; border: 1px solid #fde68a; padding: 0.6rem 0.8rem; border-radius: 8px; margin-bottom: 1rem; }
+.fila-badges { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.badge-terminado { background: #dcfce7; color: var(--verde); }
+.badge-desperfecto { background: #fee2e2; color: var(--rojo); }
+.selector-filtro { width: 100%; margin-bottom: 0.8rem; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--borde); }
+.total-tiempo { margin-bottom: 0.8rem; font-weight: 600; }
+.acciones-profesor { margin-top: 1rem; }
+.fila-equipo { border-bottom: 1px solid var(--borde); padding: 0.6rem 0; }
+.fila-equipo-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.8rem; }
+.fila-equipo-acciones { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
+.historial-equipo { margin-top: 0.5rem; padding: 0.6rem; background: #fafafa; border-radius: 6px; display: flex; flex-direction: column; gap: 0.4rem; }
+.historial-item { display: flex; flex-direction: column; gap: 0.1rem; font-size: 0.82rem; padding-bottom: 0.4rem; border-bottom: 1px dashed var(--borde); }
+
+/* Accesos rápidos e íconos */
+.accesos-rapidos { display: flex; gap: 0.4rem; margin-bottom: 0.8rem; }
+.icono-acceso { flex: 1; background: white; border: 1px solid var(--borde); border-radius: 8px; padding: 0.6rem 0.4rem; cursor: pointer; font-size: 0.85rem; }
+.icono-acceso:hover { background: #f3f4f6; }
+
+/* Listado central (por alumno) */
+.lista-central { display: flex; flex-direction: column; gap: 0.6rem; }
+.item-registro-central { width: 100%; text-align: left; background: white; border: 1px solid var(--borde); border-radius: 8px; padding: 0.8rem; display: flex; flex-direction: column; gap: 0.3rem; cursor: pointer; }
+.item-registro-central:hover { border-color: var(--azul); }
+
+/* Fotos */
+.foto-previa { display: block; max-width: 160px; max-height: 120px; border-radius: 6px; margin-bottom: 0.4rem; object-fit: cover; }
+.foto-miniatura { width: 56px; height: 56px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
+.foto-miniatura-grande { max-width: 240px; max-height: 180px; object-fit: cover; border-radius: 8px; margin-bottom: 0.5rem; }
+
+/* Punto de color con el último estado conocido del equipo */
+.equipo-card-titulo { display: flex; align-items: center; gap: 0.4rem; }
+.punto-estado { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+/* Historial del alumno agrupado por día */
+.historial-toggle { text-align: right; margin-bottom: 0.6rem; }
+.grupo-dia { margin-bottom: 1.2rem; }
+.titulo-dia { text-transform: capitalize; font-size: 1rem; border-bottom: 1px solid var(--borde); padding-bottom: 0.3rem; margin-bottom: 0.6rem; }
+.item-historial { background: white; border: 1px solid var(--borde); border-radius: 8px; padding: 0.7rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
+
+/* Profesor */
+.profesor-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
+.tabs { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
+.tabs button { text-align: left; padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid var(--borde); background: white; cursor: pointer; }
+.tabs button.activo { background: var(--azul); color: white; border-color: var(--azul); }
+
+.lista-registros { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; max-height: 70vh; overflow-y: auto; }
+.item-registro { width: 100%; text-align: left; background: white; border: 1px solid var(--borde); border-radius: 8px; padding: 0.7rem; display: flex; flex-direction: column; gap: 0.2rem; cursor: pointer; }
+.item-registro.seleccionado { border-color: var(--azul); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+.item-registro.estado-en_revision .badge { background: #fee2e2; color: var(--rojo); }
+.item-registro.estado-abierto .badge { background: #dbeafe; color: var(--azul); }
+.item-registro.estado-revisado .badge { background: #dcfce7; color: var(--verde); }
+
+.detalle { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1.5rem; }
+.resumen-cierre { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; background: #fafafa; padding: 0.8rem; border-radius: 8px; margin: 1rem 0; font-size: 0.9rem; }
+.participacion-alumno { border-top: 1px solid var(--borde); padding: 0.8rem 0; }
+.notas-lista { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.8rem; }
+.nota { background: #fffbeb; border: 1px solid #fde68a; padding: 0.6rem 0.8rem; border-radius: 6px; }
+.nueva-nota { display: flex; gap: 0.5rem; align-items: flex-start; }
+.nueva-nota textarea { flex: 1; }
+.nueva-nota button, .detalle > button.finalizar { background: var(--azul); color: white; border: none; padding: 0.6rem 1rem; border-radius: 6px; cursor: pointer; margin-top: 1rem; }
+.ok-msg { color: var(--verde); font-weight: 600; margin-top: 1rem; }
+
+.gestion-equipos { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1rem; }
+.form-equipo { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
+.form-equipo button { background: var(--azul); color: white; border: none; padding: 0.5rem; border-radius: 6px; cursor: pointer; }
+.lista-equipos-simple { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; max-height: 300px; overflow-y: auto; }
+.lista-equipos-simple li { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; border-bottom: 1px solid var(--borde); padding: 0.3rem 0; }
