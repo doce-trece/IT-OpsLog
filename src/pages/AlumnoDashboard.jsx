@@ -33,11 +33,13 @@ export default function AlumnoDashboard({ perfil }) {
     // "Activo" = cualquier registro propio que aún no haya sido revisado,
     // esté abierto o ya enviado a revisión: se sigue pudiendo editar.
     const activo = (misParticipaciones || []).find(p => p.registros && p.registros.estado !== 'revisado')
-    setRegistroActivo(activo ? { registro: activo.registros, participacion: activo } : null)
 
     // Cuenta como conexión: sella el bloque del instante actual y arranca
-    // (o continúa) el cronómetro de tiempo conectado.
+    // (o continúa) el cronómetro de tiempo conectado. Se hace ANTES de
+    // guardar el estado para que la pantalla ya muestre los datos al día.
     if (activo) await registrarConexion(supabase, activo.registros, todosLosBloques || [])
+
+    setRegistroActivo(activo ? { registro: activo.registros, participacion: activo } : null)
 
     setCargando(false)
   }, [perfil.id])

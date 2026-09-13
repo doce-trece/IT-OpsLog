@@ -89,7 +89,8 @@ export async function registrarConexion(supabase, registro, bloques) {
     tiempo_conectado_segundos: tiempoConectado,
     conexion_iniciada_en: conexionIniciada,
   }
-  await supabase.from('registros').update(cambios).eq('id', registro.id)
+  const { error } = await supabase.from('registros').update(cambios).eq('id', registro.id)
+  if (error) { console.error('No se pudo registrar la conexión:', error.message); return }
   Object.assign(registro, cambios)
 }
 
@@ -99,10 +100,11 @@ export async function cerrarConexion(supabase, registro) {
   if (!registro.conexion_iniciada_en) return
   const segundos = Math.max(0, Math.round((Date.now() - new Date(registro.conexion_iniciada_en).getTime()) / 1000))
   const nuevoTiempo = (registro.tiempo_conectado_segundos || 0) + segundos
-  await supabase
+  const { error } = await supabase
     .from('registros')
     .update({ tiempo_conectado_segundos: nuevoTiempo, conexion_iniciada_en: null })
     .eq('id', registro.id)
+  if (error) { console.error('No se pudo cerrar la conexión:', error.message); return }
   registro.tiempo_conectado_segundos = nuevoTiempo
   registro.conexion_iniciada_en = null
 }
