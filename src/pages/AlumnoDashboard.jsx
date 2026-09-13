@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
-import { ESTADOS_EQUIPO_FINAL, colorEstadoEquipo, etiquetaEstadoEquipo } from '../lib/estados'
-import { calcularSesionesYDias, registrarActividad, contarBloquesTranscurridos } from '../lib/sesiones'
+import { ESTADOS_EQUIPO_FINAL, colorEstadoEquipo, etiquetaEstadoEquipo, formatearDuracion } from '../lib/estados'
+import { calcularSesionesYDias, tiempoConectadoMs, registrarConexion, cerrarConexion } from '../lib/sesiones'
 import { subirFoto } from '../lib/fotos'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
 
@@ -9,7 +9,6 @@ export default function AlumnoDashboard({ perfil }) {
   const [cargando, setCargando] = useState(true)
   const [equipos, setEquipos] = useState([])
   const [personas, setPersonas] = useState([])
-  const [bloques, setBloques] = useState([])
   const [registroActivo, setRegistroActivo] = useState(null) // {registro, participacion}
   const [equipoParaUnirse, setEquipoParaUnirse] = useState(null)
   const [editandoEquipo, setEditandoEquipo] = useState(null)
@@ -25,7 +24,6 @@ export default function AlumnoDashboard({ perfil }) {
     setPersonas(todasLasPersonas || [])
 
     const { data: todosLosBloques } = await supabase.from('bloques_lectivos').select('*')
-    setBloques(todosLosBloques || [])
 
     const { data: misParticipaciones } = await supabase
       .from('registro_alumnos')
@@ -37,9 +35,9 @@ export default function AlumnoDashboard({ perfil }) {
     const activo = (misParticipaciones || []).find(p => p.registros && p.registros.estado !== 'revisado')
     setRegistroActivo(activo ? { registro: activo.registros, participacion: activo } : null)
 
-    // Cuenta como "día de trabajo" haber entrado a la app con un registro
-    // activo, no cada vez que se pulsa Guardar.
-    if (activo) await registrarActividad(supabase, activo.registros)
+    // Cuenta como conexión: sella el bloque del instante actual y arranca
+    // (o continúa) el cronómetro de tiempo conectado.
+    if (activo) await registrarConexion(supabase, activo.registros, todosLosBloques || [])
 
     setCargando(false)
   }, [perfil.id])
@@ -115,7 +113,6 @@ export default function AlumnoDashboard({ perfil }) {
         registro={registroActivo.registro}
         participacion={registroActivo.participacion}
         personas={personas.filter(p => p.id !== perfil.id)}
-        bloques={bloques}
         onCambio={cargarTodo}
         onEliminar={() => eliminarRegistro(registroActivo.registro)}
       />
@@ -183,7 +180,7 @@ export default function AlumnoDashboard({ perfil }) {
   )
 }
 
-function OperacionActiva({ registro, participacion, personas, bloques, onCambio, onEliminar }) {
+function OperacionActiva({ registro, participacion, personas, onCambio, onEliminar }) {
   const [titulo, setTitulo] = useState(registro.titulo || '')
   const [descripcion, setDescripcion] = useState(participacion.descripcion_operaciones || '')
   const [problemas, setProblemas] = useState(participacion.problemas_encontrados || '')
@@ -198,8 +195,8 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
   const [ayuda, setAyuda] = useState(registro.ayuda_recibida || false)
   const [ayudaDe, setAyudaDe] = useState(registro.ayuda_recibida_de || [])
 
-  const { diasCalendario, diasTrabajados } = calcularSesionesYDias(registro)
-  const sesiones = contarBloquesTranscurridos(bloques, registro)
+  const { diasCalendario, diasTrabajados, sesiones } = calcularSesionesYDias(registro)
+  const tiempoConectado = tiempoConectadoMs(registro)
 
   async function guardarTitulo() {
     await supabase.from('registros').update({ titulo }).eq('id', registro.id)
@@ -261,6 +258,7 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
 
   async function enviarARevision() {
     await guardarParticipacion()
+    await cerrarConexion(supabase, registro) // para el cronómetro: no sigue sumando tiempo en revisión
     await supabase
       .from('registros')
       .update({ estado: 'en_revision', enviado_revision_en: new Date().toISOString() })
@@ -276,6 +274,7 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
         Inicio: {new Date(registro.fecha_inicio).toLocaleString('es-ES')}
         {' · '}Lleva abierto {diasCalendario} {diasCalendario === 1 ? 'día' : 'días'} ({diasTrabajados} con actividad)
         {' · '}{sesiones} {sesiones === 1 ? 'sesión de aula' : 'sesiones de aula'}
+        {' · '}Tiempo conectado: {formatearDuracion(tiempoConectado)}{registro.conexion_iniciada_en ? ' (en curso)' : ''}
       </p>
 
       {registro.estado === 'en_revision' && (
@@ -364,10 +363,8 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
 function HistorialAlumno({ perfil }) {
   const [cargando, setCargando] = useState(true)
   const [participaciones, setParticipaciones] = useState([])
-  const [bloques, setBloques] = useState([])
 
   useEffect(() => {
-    supabase.from('bloques_lectivos').select('*').then(({ data }) => setBloques(data || []))
     supabase
       .from('registro_alumnos')
       .select('*, registros(*, equipos(codigo, tipo, modelo_basico))')
@@ -393,8 +390,7 @@ function HistorialAlumno({ perfil }) {
         <div key={dia} className="grupo-dia">
           <h3 className="titulo-dia">{dia}</h3>
           {items.map(p => {
-            const { diasCalendario } = calcularSesionesYDias(p.registros)
-            const sesiones = contarBloquesTranscurridos(bloques, p.registros)
+            const { diasCalendario, sesiones } = calcularSesionesYDias(p.registros)
             return (
               <div key={p.id} className={`item-historial estado-${p.registros.estado}`}>
                 <strong>{p.registros.titulo || `${p.registros.equipos?.codigo} · ${p.registros.equipos?.tipo}`}</strong>

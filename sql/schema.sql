@@ -83,9 +83,12 @@ create table if not exists registros (
   fecha_inicio timestamptz not null default now(),
   fecha_fin timestamptz,
   enviado_revision_en timestamptz,
-  dias_trabajados int not null default 1,
-  ultima_actividad_fecha date not null default current_date,
-  fechas_actividad date[] not null default array[current_date],
+  dias_trabajados int not null default 1,             -- ya no se usa activamente
+  ultima_actividad_fecha date not null default current_date, -- ya no se usa activamente
+  fechas_actividad date[] not null default array[current_date], -- ya no se usa activamente
+  bloques_contados text[] not null default '{}',
+  tiempo_conectado_segundos int not null default 0,
+  conexion_iniciada_en timestamptz,
   estado text not null default 'abierto'
     check (estado in ('abierto','en_revision','revisado')),
   estado_equipo_final text

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { ESTADOS_EQUIPO_FINAL, etiquetaEstadoEquipo, colorEstadoEquipo, formatearDuracion } from '../lib/estados'
-import { calcularSesionesYDias, contarBloquesTranscurridos } from '../lib/sesiones'
+import { calcularSesionesYDias, tiempoConectadoMs } from '../lib/sesiones'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
 
 export default function ProfesorDashboard({ perfil }) {
@@ -9,7 +9,6 @@ export default function ProfesorDashboard({ perfil }) {
   const [registros, setRegistros] = useState([])
   const [equipos, setEquipos] = useState([])
   const [personas, setPersonas] = useState([])
-  const [bloques, setBloques] = useState([])
   const [cargando, setCargando] = useState(true)
   const [seleccionado, setSeleccionado] = useState(null)
   const [alumnoFiltro, setAlumnoFiltro] = useState(null)
@@ -33,9 +32,6 @@ export default function ProfesorDashboard({ perfil }) {
 
     const { data: per } = await supabase.from('profiles').select('*').order('nombre')
     setPersonas(per || [])
-
-    const { data: bl } = await supabase.from('bloques_lectivos').select('*')
-    setBloques(bl || [])
 
     setCargando(false)
   }, [])
@@ -127,7 +123,7 @@ export default function ProfesorDashboard({ perfil }) {
                   <span className="muted">
                     Inicio: {new Date(r.fecha_inicio).toLocaleDateString('es-ES')}
                     {' · '}{calcularSesionesYDias(r).diasCalendario}d
-                    {' · '}{contarBloquesTranscurridos(bloques, r)} ses.
+                    {' · '}{calcularSesionesYDias(r).sesiones} ses.
                   </span>
                 </button>
               </li>
@@ -164,7 +160,7 @@ export default function ProfesorDashboard({ perfil }) {
                 <span className="muted">
                   Inicio: {new Date(r.fecha_inicio).toLocaleDateString('es-ES')}
                   {' · '}{calcularSesionesYDias(r).diasCalendario}d
-                  {' · '}{contarBloquesTranscurridos(bloques, r)} ses.
+                  {' · '}{calcularSesionesYDias(r).sesiones} ses.
                 </span>
               </button>
             ))}
@@ -179,7 +175,6 @@ export default function ProfesorDashboard({ perfil }) {
               registro={seleccionado}
               perfil={perfil}
               personasPorId={personasPorId}
-              bloques={bloques}
               onCambio={() => { setSeleccionado(null); cargar() }}
             />
           </div>
@@ -191,7 +186,6 @@ export default function ProfesorDashboard({ perfil }) {
             registro={seleccionado}
             perfil={perfil}
             personasPorId={personasPorId}
-            bloques={bloques}
             onCambio={() => { setSeleccionado(null); cargar() }}
           />
         )}
@@ -207,7 +201,7 @@ function duracionMs(registro) {
   return fin - inicio
 }
 
-function DetalleRegistro({ registro, perfil, personasPorId, bloques, onCambio }) {
+function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
   const [nuevaNota, setNuevaNota] = useState('')
   const [notas, setNotas] = useState(registro.notas_profesor || [])
   const [guardandoNota, setGuardandoNota] = useState(false)
@@ -252,8 +246,8 @@ function DetalleRegistro({ registro, perfil, personasPorId, bloques, onCambio })
   }
 
   const ayudaDeNombres = (registro.ayuda_recibida_de || []).map(id => personasPorId[id]?.nombre).filter(Boolean).join(', ')
-  const { diasCalendario, diasTrabajados } = calcularSesionesYDias(registro)
-  const sesiones = contarBloquesTranscurridos(bloques, registro)
+  const { diasCalendario, diasTrabajados, sesiones } = calcularSesionesYDias(registro)
+  const tiempoConectado = tiempoConectadoMs(registro)
 
   return (
     <div>
@@ -264,7 +258,7 @@ function DetalleRegistro({ registro, perfil, personasPorId, bloques, onCambio })
         {registro.revisado_en && <> · Revisado: {new Date(registro.revisado_en).toLocaleString('es-ES')}</>}
         {' · '}Lleva abierto {diasCalendario} {diasCalendario === 1 ? 'día' : 'días'} ({diasTrabajados} con actividad)
         {' · '}{sesiones} {sesiones === 1 ? 'sesión de aula' : 'sesiones de aula'}
-        {' · '}Tiempo empleado: {formatearDuracion(duracionMs(registro))}
+        {' · '}Tiempo conectado: {formatearDuracion(tiempoConectado)}{registro.conexion_iniciada_en ? ' (conectado ahora mismo)' : ''}
       </p>
 
       <div className="resumen-cierre">
