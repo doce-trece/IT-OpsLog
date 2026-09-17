@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { ESTADOS_EQUIPO_FINAL, etiquetaEstadoEquipo, colorEstadoEquipo, formatearDuracion } from '../lib/estados'
 import { calcularSesionesYDias, tiempoConectadoMs } from '../lib/sesiones'
+import { nombreMostrable } from '../lib/personas'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
+import GaleriaFotos from '../components/GaleriaFotos.jsx'
 
 export default function ProfesorDashboard({ perfil }) {
   const [vista, setVista] = useState('abiertas')
@@ -23,7 +25,7 @@ export default function ProfesorDashboard({ perfil }) {
 
     const { data: reg } = await supabase
       .from('registros')
-      .select('*, equipos(codigo, tipo, modelo_basico), registro_alumnos(*, profiles(nombre)), notas_profesor(*)')
+      .select('*, equipos(codigo, tipo, modelo_basico), registro_alumnos(*, profiles(nombre, username)), notas_profesor(*)')
       .order('created_at', { ascending: false })
     setRegistros(reg || [])
 
@@ -85,7 +87,7 @@ export default function ProfesorDashboard({ perfil }) {
         {vista === 'porAlumno' && (
           <select className="selector-filtro" value={alumnoFiltro || ''} onChange={e => { setAlumnoFiltro(e.target.value || null); setSeleccionado(null) }}>
             <option value="">Elige un alumno…</option>
-            {alumnos.map(a => <option key={a.id} value={a.id}>{a.nombre}</option>)}
+            {alumnos.map(a => <option key={a.id} value={a.id}>{nombreMostrable(a)}</option>)}
           </select>
         )}
         {vista === 'porEquipo' && (
@@ -118,7 +120,7 @@ export default function ProfesorDashboard({ perfil }) {
                     {r.desperfecto && <span className="badge badge-desperfecto">⚠ Desperfecto</span>}
                   </span>
                   <span className="muted">
-                    {r.registro_alumnos.map(ra => ra.profiles?.nombre).join(', ')}
+                    {r.registro_alumnos.map(ra => nombreMostrable(ra.profiles)).join(', ')}
                   </span>
                   <span className="muted">
                     Inicio: {new Date(r.fecha_inicio).toLocaleDateString('es-ES')}
@@ -147,7 +149,7 @@ export default function ProfesorDashboard({ perfil }) {
 
         {vista === 'porAlumno' && alumnoFiltro && !seleccionado && (
           <div className="lista-central">
-            <h2>{personasPorId[alumnoFiltro]?.nombre}</h2>
+            <h2>{nombreMostrable(personasPorId[alumnoFiltro])}</h2>
             {listaVisible.length === 0 && <p className="muted">Este alumno todavía no tiene registros.</p>}
             {listaVisible.map(r => (
               <button key={r.id} className={`item-registro-central estado-${r.estado}`} onClick={() => setSeleccionado(r)}>
@@ -169,7 +171,7 @@ export default function ProfesorDashboard({ perfil }) {
 
         {vista === 'porAlumno' && seleccionado && (
           <div>
-            <button className="link-btn" onClick={() => setSeleccionado(null)}>← Volver a los registros de {personasPorId[alumnoFiltro]?.nombre}</button>
+            <button className="link-btn" onClick={() => setSeleccionado(null)}>← Volver a los registros de {nombreMostrable(personasPorId[alumnoFiltro])}</button>
             <DetalleRegistro
               key={seleccionado.id}
               registro={seleccionado}
@@ -207,6 +209,10 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
   const [guardandoNota, setGuardandoNota] = useState(false)
   const [editandoEstado, setEditandoEstado] = useState(false)
   const [estadoNuevo, setEstadoNuevo] = useState(registro.estado_equipo_final || '')
+  const [desperfecto, setDesperfecto] = useState(registro.desperfecto || false)
+  const [terminado, setTerminado] = useState(registro.terminado || false)
+  const [ayuda, setAyuda] = useState(registro.ayuda_recibida || false)
+  const [ayudaDe, setAyudaDe] = useState(registro.ayuda_recibida_de || [])
 
   async function guardarNota() {
     if (!nuevaNota.trim()) return
@@ -238,6 +244,29 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
     onCambio()
   }
 
+  async function toggleDesperfecto(checked) {
+    setDesperfecto(checked)
+    await supabase.from('registros').update({ desperfecto: checked }).eq('id', registro.id)
+  }
+
+  async function toggleTerminado(checked) {
+    setTerminado(checked)
+    await supabase.from('registros').update({ terminado: checked }).eq('id', registro.id)
+  }
+
+  async function cambiarAyuda(checked) {
+    setAyuda(checked)
+    const nuevaLista = checked ? ayudaDe : []
+    if (!checked) setAyudaDe([])
+    await supabase.from('registros').update({ ayuda_recibida: checked, ayuda_recibida_de: nuevaLista }).eq('id', registro.id)
+  }
+
+  async function toggleAyudante(id, checked) {
+    const nuevaLista = checked ? [...ayudaDe, id] : ayudaDe.filter(x => x !== id)
+    setAyudaDe(nuevaLista)
+    await supabase.from('registros').update({ ayuda_recibida_de: nuevaLista }).eq('id', registro.id)
+  }
+
   async function eliminarRegistro() {
     if (!window.confirm('¿Eliminar este registro por completo? No se puede deshacer.')) return
     await supabase.from('registros').delete().eq('id', registro.id)
@@ -245,13 +274,17 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
     onCambio()
   }
 
-  const ayudaDeNombres = (registro.ayuda_recibida_de || []).map(id => personasPorId[id]?.nombre).filter(Boolean).join(', ')
+  const personasAyuda = Object.values(personasPorId)
+  const ayudaDeNombres = ayudaDe.map(id => nombreMostrable(personasPorId[id])).join(', ')
   const { diasCalendario, diasTrabajados, sesiones } = calcularSesionesYDias(registro)
   const tiempoConectado = tiempoConectadoMs(registro)
 
   return (
     <div>
-      <h2>{registro.equipos?.codigo} · {registro.equipos?.tipo} {registro.equipos?.modelo_basico}</h2>
+      <h2>{registro.titulo || `${registro.equipos?.codigo} · ${registro.equipos?.tipo} ${registro.equipos?.modelo_basico}`}</h2>
+      {registro.titulo && (
+        <p className="muted">{registro.equipos?.codigo} · {registro.equipos?.tipo} {registro.equipos?.modelo_basico}</p>
+      )}
       <p className="muted">
         Inicio: {new Date(registro.fecha_inicio).toLocaleString('es-ES')}
         {registro.enviado_revision_en && <> · Enviado a revisión: {new Date(registro.enviado_revision_en).toLocaleString('es-ES')}</>}
@@ -270,10 +303,43 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
           {' '}
           <button className="link-btn" onClick={() => setEditandoEstado(v => !v)}>{editandoEstado ? 'cancelar' : 'cambiar'}</button>
         </span>
-        <span><strong>Desperfecto/incidencia:</strong> {registro.desperfecto ? '⚠ Sí' : 'No'}</span>
-        <span><strong>Terminado:</strong> {registro.terminado ? '✓ Sí' : 'No'}</span>
-        <span><strong>Ayuda recibida:</strong> {registro.ayuda_recibida ? `Sí, de ${ayudaDeNombres || '—'}` : 'No'}</span>
+        <span>
+          <strong>Desperfecto/incidencia:</strong>{' '}
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={desperfecto} onChange={e => toggleDesperfecto(e.target.checked)} />
+            {desperfecto ? 'Sí' : 'No'}
+          </label>
+        </span>
+        <span>
+          <strong>Terminado:</strong>{' '}
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={terminado} onChange={e => toggleTerminado(e.target.checked)} />
+            {terminado ? 'Sí' : 'No'}
+          </label>
+        </span>
+        <span>
+          <strong>Ayuda recibida:</strong>{' '}
+          <label className="checkbox-inline">
+            <input type="checkbox" checked={ayuda} onChange={e => cambiarAyuda(e.target.checked)} />
+            {ayuda ? `Sí, de ${ayudaDeNombres || '—'}` : 'No'}
+          </label>
+        </span>
       </div>
+
+      {ayuda && (
+        <div className="lista-ayudantes">
+          {personasAyuda.filter(p => p.id !== registro.creado_por).map(p => (
+            <label key={p.id} className="checkbox">
+              <input
+                type="checkbox"
+                checked={ayudaDe.includes(p.id)}
+                onChange={e => toggleAyudante(p.id, e.target.checked)}
+              />
+              {nombreMostrable(p)}{p.rol === 'profesor' ? ' (profesor/a)' : ''}
+            </label>
+          ))}
+        </div>
+      )}
 
       {editandoEstado && (
         <div className="cierre-box">
@@ -290,8 +356,8 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
       <h3>Operaciones por alumno</h3>
       {registro.registro_alumnos.map(ra => (
         <div key={ra.id} className="participacion-alumno">
-          <h4>{ra.profiles?.nombre}</h4>
-          {ra.foto_url && <img src={ra.foto_url} alt="" className="foto-miniatura-grande" />}
+          <h4>{nombreMostrable(ra.profiles)}</h4>
+          <GaleriaFotos urls={ra.fotos_urls} tamano="grande" />
           <p><strong>Operaciones:</strong> {ra.descripcion_operaciones || '—'}</p>
           <p><strong>Problemas:</strong> {ra.problemas_encontrados || '—'}</p>
           <p><strong>Resultados:</strong> {ra.resultados_obtenidos || '—'}</p>
@@ -366,13 +432,13 @@ function GestionEquipos({ equipos, personasPorId, onCambio, editando, setEditand
         {equipos.map(e => (
           <li key={e.id} className="fila-equipo">
             <div className="fila-equipo-cabecera">
-              {e.foto_url && <img src={e.foto_url} alt="" className="foto-miniatura" />}
+              <GaleriaFotos urls={e.fotos_urls} />
               <div>
                 <strong>{e.codigo}</strong> — {e.tipo} {e.modelo_basico}
                 {e.notas_inventario && <div className="muted">⚠ {e.notas_inventario}</div>}
                 {e.ultima_modificacion_en && (
                   <div className="muted">
-                    Última modificación: {personasPorId[e.ultima_modificacion_por]?.nombre || '—'} · {new Date(e.ultima_modificacion_en).toLocaleString('es-ES')}
+                    Última modificación: {nombreMostrable(personasPorId[e.ultima_modificacion_por])} · {new Date(e.ultima_modificacion_en).toLocaleString('es-ES')}
                   </div>
                 )}
               </div>
@@ -388,7 +454,7 @@ function GestionEquipos({ equipos, personasPorId, onCambio, editando, setEditand
                 {historial.map(h => (
                   <div key={h.id} className="historial-item">
                     <span className="muted">
-                      {personasPorId[h.modificado_por]?.nombre || 'Alguien'} · {new Date(h.modificado_en).toLocaleString('es-ES')}
+                      {nombreMostrable(personasPorId[h.modificado_por])} · {new Date(h.modificado_en).toLocaleString('es-ES')}
                     </span>
                     <span className="muted">Valores anteriores: {h.datos_anteriores.tipo} {h.datos_anteriores.modelo_basico}, notas: "{h.datos_anteriores.notas_inventario || '—'}"</span>
                   </div>

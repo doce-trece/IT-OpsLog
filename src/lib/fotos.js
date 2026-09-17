@@ -16,3 +16,14 @@ export async function subirFoto(file, carpeta) {
   const { data } = supabase.storage.from('fotos').getPublicUrl(nombre)
   return data.publicUrl
 }
+
+// Sube varios archivos de una vez y devuelve el array de URLs que sí se
+// subieron correctamente (las que fallen se avisan pero no cortan el resto).
+export async function subirFotos(files, carpeta) {
+  const urls = []
+  for (const file of files) {
+    const url = await subirFoto(file, carpeta)
+    if (url) urls.push(url)
+  }
+  return urls
+}

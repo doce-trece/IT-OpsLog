@@ -113,6 +113,22 @@ textarea, select, input[type=text] { padding: 0.6rem; border: 1px solid var(--bo
 .titulo-dia { text-transform: capitalize; font-size: 1rem; border-bottom: 1px solid var(--borde); padding-bottom: 0.3rem; margin-bottom: 0.6rem; }
 .item-historial { background: white; border: 1px solid var(--borde); border-radius: 8px; padding: 0.7rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
 
+/* Galería de fotos */
+.galeria-fotos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.3rem 0; }
+
+/* Checkbox en línea, dentro de un <strong>: ... </strong> */
+.checkbox-inline { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 400; cursor: pointer; }
+.checkbox-inline input { width: auto; }
+
+/* Aviso de inactividad */
+.aviso-inactividad {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: #fef3c7; color: #92400e; text-align: center;
+  padding: 0.7rem 1rem; font-size: 0.9rem; font-weight: 600;
+  display: flex; justify-content: center; align-items: center; gap: 1rem;
+}
+.aviso-inactividad button { background: none; border: 1px solid #92400e; color: #92400e; border-radius: 6px; padding: 0.2rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
+
 /* Profesor */
 .profesor-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
 .tabs { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }

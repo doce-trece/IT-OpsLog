@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { ESTADOS_EQUIPO_FINAL, colorEstadoEquipo, etiquetaEstadoEquipo, formatearDuracion } from '../lib/estados'
 import { calcularSesionesYDias, tiempoConectadoMs, registrarConexion, cerrarConexion } from '../lib/sesiones'
-import { subirFoto } from '../lib/fotos'
+import { subirFoto, subirFotos } from '../lib/fotos'
+import { nombreMostrable } from '../lib/personas'
+import GaleriaFotos from '../components/GaleriaFotos.jsx'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
 
 export default function AlumnoDashboard({ perfil }) {
@@ -20,7 +22,7 @@ export default function AlumnoDashboard({ perfil }) {
     const { data: eq } = await supabase.from('equipos').select('*').order('codigo')
     setEquipos(eq || [])
 
-    const { data: todasLasPersonas } = await supabase.from('profiles').select('id, nombre, rol').order('nombre')
+    const { data: todasLasPersonas } = await supabase.from('profiles').select('id, nombre, username, rol').order('nombre')
     setPersonas(todasLasPersonas || [])
 
     const { data: todosLosBloques } = await supabase.from('bloques_lectivos').select('*')
@@ -101,7 +103,7 @@ export default function AlumnoDashboard({ perfil }) {
   if (equipoParaUnirse) {
     contenido = (
       <div className="aviso-box">
-        <h2>{equipoParaUnirse.equipo.nombre} ya está en uso</h2>
+        <h2>{equipoParaUnirse.equipo.codigo} · {equipoParaUnirse.equipo.tipo} ya está en uso</h2>
         <p>Un compañero/a tiene un registro abierto (o pendiente de revisión) sobre este equipo. ¿Quieres unirte para anotar tu propia parte del trabajo?</p>
         <div className="botones">
           <button onClick={unirseAGrupo}>Unirme al registro</button>
@@ -233,14 +235,16 @@ function OperacionActiva({ registro, participacion, personas, onCambio, onElimin
     await supabase.from('registros').update({ ayuda_recibida_de: nuevaLista }).eq('id', registro.id)
   }
 
-  async function subirFotoOperacion(file) {
-    if (!file) return
+  async function subirFotoOperacion(files) {
+    if (!files || files.length === 0) return
     setSubiendoFoto(true)
-    const url = await subirFoto(file, 'operaciones')
+    const nuevas = await subirFotos(Array.from(files), 'operaciones')
     setSubiendoFoto(false)
-    if (!url) return
-    await supabase.from('registro_alumnos').update({ foto_url: url }).eq('id', participacion.id)
-    participacion.foto_url = url
+    if (nuevas.length === 0) return
+    const listaActual = participacion.fotos_urls || []
+    const listaNueva = [...listaActual, ...nuevas]
+    await supabase.from('registro_alumnos').update({ fotos_urls: listaNueva }).eq('id', participacion.id)
+    participacion.fotos_urls = listaNueva
     setFoto(null)
   }
 
@@ -309,9 +313,9 @@ function OperacionActiva({ registro, participacion, personas, onCambio, onElimin
         <textarea value={resultados} onChange={e => setResultados(e.target.value)} rows={3} />
       </label>
       <label>
-        Foto de la reparación (opcional)
-        {participacion.foto_url && <img src={participacion.foto_url} alt="" className="foto-previa" />}
-        <input type="file" accept="image/*" onChange={e => subirFotoOperacion(e.target.files[0])} disabled={subiendoFoto} />
+        Fotos de la reparación (opcional, puedes elegir varias)
+        <GaleriaFotos urls={participacion.fotos_urls} />
+        <input type="file" accept="image/*" multiple onChange={e => subirFotoOperacion(e.target.files)} disabled={subiendoFoto} />
         {subiendoFoto && <span className="muted">Subiendo…</span>}
       </label>
       <button onClick={guardarParticipacion} disabled={guardando}>
@@ -346,7 +350,7 @@ function OperacionActiva({ registro, participacion, personas, onCambio, onElimin
                 checked={ayudaDe.includes(p.id)}
                 onChange={e => toggleAyudante(p.id, e.target.checked)}
               />
-              {p.nombre}{p.rol === 'profesor' ? ' (profesor/a)' : ''}
+              {nombreMostrable(p)}{p.rol === 'profesor' ? ' (profesor/a)' : ''}
             </label>
           ))}
         </div>

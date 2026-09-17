@@ -35,6 +35,7 @@ create table if not exists equipos (
   ultima_modificacion_en timestamptz,
   ultimo_estado_funcional text,
   foto_url text,
+  fotos_urls text[] not null default '{}',
   created_at timestamptz default now()
 );
 
@@ -118,6 +119,7 @@ create table if not exists registro_alumnos (
   problemas_encontrados text,
   resultados_obtenidos text,
   foto_url text,
+  fotos_urls text[] not null default '{}',
   updated_at timestamptz default now(),
   unique (registro_id, alumno_id)
 );
