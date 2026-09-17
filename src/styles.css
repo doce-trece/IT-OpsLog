@@ -153,6 +153,9 @@ textarea, select, input[type=text] { padding: 0.6rem; border: 1px solid var(--bo
 .ok-msg { color: var(--verde); font-weight: 600; margin-top: 1rem; }
 
 .gestion-equipos { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1rem; }
+.gestion-clases { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1rem; }
+.gestion-clases h3 { margin-top: 1.5rem; }
+.gestion-clases select { padding: 0.4rem; border-radius: 6px; border: 1px solid var(--borde); }
 .form-equipo { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .form-equipo button { background: var(--azul); color: white; border: none; padding: 0.5rem; border-radius: 6px; cursor: pointer; }
 .lista-equipos-simple { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; max-height: 300px; overflow-y: auto; }

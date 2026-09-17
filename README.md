@@ -224,7 +224,31 @@ guarda la lista exacta de días en los que hubo actividad real (guardar
 algo, marcar un desperfecto, subir una foto...) y solo se cuentan los
 bloques de esos días concretos.
 
-## 14. Cómo funciona el flujo (actualizado)
+## 15. Clases/grupos y FPB1 solo inventario (v13)
+
+Ejecuta `sql/fix_v13_clases.sql` en Supabase. Esto:
+
+- Crea la tabla `clases` con dos de partida: **SMR2** (con operaciones) y
+  **FPB1** (solo inventario, de momento — se puede activar más adelante
+  desde el propio panel del profesor, pestaña "Clases").
+- Asocia cada equipo a una clase obligatoriamente, y actualiza el
+  inventario completo con los 23 equipos de tu Excel más reciente, cada
+  uno con la clase que le pusiste en la columna "GRUPO-ASIGNADO".
+- Cada alumno debe estar asociado a una clase: desde el panel del
+  profesor → pestaña "Clases" → "Asignar alumnos a una clase", elige la
+  clase de cada uno con un desplegable. Mientras no se lo asignes, ese
+  alumno no verá ningún equipo.
+- Un alumno de una clase **solo ve y gestiona el inventario de su propia
+  clase** (RLS aplicado en la base de datos, no solo en la pantalla).
+- Si la clase tiene las operaciones **desactivadas** (como FPB1 de
+  momento), el alumno entra directamente a una pantalla simplificada de
+  solo inventario: puede dar de alta y editar equipos, pero no existe
+  ningún flujo de "elegir equipo y registrar una operación".
+- El profesor puede crear más clases (por si aparecen más grupos) y
+  activar/desactivar el registro de operaciones de cada una en cualquier
+  momento, todo desde la pestaña "Clases".
+
+## 16. Cómo funciona el flujo (actualizado)
 
 - **Alumno**: entra → ve el bloque lectivo actual → elige un equipo libre (o
   se une a uno "ocupado" si un compañero ya abrió un registro en grupo) →

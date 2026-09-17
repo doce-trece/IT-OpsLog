@@ -3,11 +3,19 @@
 -- Pégalo entero en Supabase → SQL Editor → New query → Run
 -- =====================================================================
 
+-- ---------- CLASES / ESPACIOS (ej. SMR2, FPB1...) ----------
+create table if not exists clases (
+  id bigint generated always as identity primary key,
+  nombre text unique not null,
+  permite_operaciones boolean not null default true -- si es false, esa clase solo gestiona inventario
+);
+
 -- ---------- PERFILES (alumno / profesor) ----------
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   nombre text not null,
   rol text not null check (rol in ('alumno','profesor')),
+  clase_id bigint references clases(id), -- obligatorio en la práctica para alumnos; el profesor no necesita ninguna
   created_at timestamptz default now()
 );
 
@@ -27,6 +35,7 @@ create table if not exists equipos (
   disco text,                         -- Excel: DISCO
   procesador text,                    -- Excel: PROCESADOR
   notas_inventario text,              -- Excel: NOTAS (incidencias/estado conocido del equipo)
+  clase_id bigint not null references clases(id), -- Excel: GRUPO-ASIGNADO
   origen text,
   anio_entrada_taller int,
   estado text not null default 'libre'
@@ -154,6 +163,33 @@ returns boolean language sql stable security definer set search_path = public as
   );
 $$;
 
+-- clase del usuario actual (null para el profesor, que no pertenece a ninguna)
+create or replace function clase_actual()
+returns bigint language sql stable security definer set search_path = public as $$
+  select clase_id from profiles where id = auth.uid();
+$$;
+
+-- ¿puede el usuario actual gestionar (crear/editar) un equipo de esta clase?
+create or replace function puede_gestionar_equipo(p_clase_id bigint)
+returns boolean language sql stable security definer set search_path = public as $$
+  select is_profesor() or clase_actual() = p_clase_id;
+$$;
+
+-- ¿puede el usuario actual abrir un registro de operaciones sobre este equipo?
+-- (tiene que ser de su misma clase, y esa clase debe tener operaciones activadas)
+create or replace function puede_operar_equipo(p_equipo_id bigint)
+returns boolean language sql stable security definer set search_path = public as $$
+  select
+    is_profesor()
+    or exists (
+      select 1 from equipos eq
+      join clases c on c.id = eq.clase_id
+      where eq.id = p_equipo_id
+        and eq.clase_id = clase_actual()
+        and c.permite_operaciones = true
+    );
+$$;
+
 -- PROFILES: cualquier autenticado puede ver el nombre de los demás (hace
 -- falta para el selector de "quién te ha ayudado" y para que el profesor
 -- vea el nombre de cada alumno).
@@ -162,11 +198,20 @@ create policy "profiles_select" on profiles for select
 create policy "profiles_update_own" on profiles for update
   using (id = auth.uid());
 
--- EQUIPOS: todos los autenticados pueden leer; cualquier autenticado puede
--- crear/editar (alumno o profesor); solo el profesor puede borrar.
-create policy "equipos_select" on equipos for select using (auth.uid() is not null);
-create policy "equipos_insert_autenticado" on equipos for insert with check (auth.uid() is not null);
-create policy "equipos_update_estado" on equipos for update using (auth.uid() is not null);
+-- CLASES: cualquier autenticado puede verlas; solo el profesor las crea/edita
+alter table clases enable row level security;
+create policy "clases_select" on clases for select using (auth.uid() is not null);
+create policy "clases_write_profesor" on clases for all using (is_profesor()) with check (is_profesor());
+
+-- EQUIPOS: cada clase ve y gestiona SOLO su propio inventario; el
+-- profesor ve y gestiona todas. Solo el profesor puede borrar.
+create policy "equipos_select" on equipos for select
+  using (is_profesor() or clase_id = clase_actual());
+create policy "equipos_insert_autenticado" on equipos for insert
+  with check (puede_gestionar_equipo(clase_id));
+create policy "equipos_update_estado" on equipos for update
+  using (puede_gestionar_equipo(clase_id))
+  with check (puede_gestionar_equipo(clase_id));
 create policy "equipos_delete_profesor" on equipos for delete using (is_profesor());
 
 alter table equipos_historial enable row level security;
@@ -187,8 +232,10 @@ create policy "registros_select" on registros for select
     or creado_por = auth.uid()
     or exists (select 1 from registro_alumnos ra where ra.registro_id = registros.id and ra.alumno_id = auth.uid())
   );
+-- Solo se puede abrir un registro sobre un equipo de tu propia clase, y
+-- solo si esa clase tiene las operaciones activadas.
 create policy "registros_insert" on registros for insert
-  with check (auth.uid() is not null);
+  with check (auth.uid() is not null and puede_operar_equipo(equipo_id));
 -- El cierre automático de bloque puede correr desde la sesión de
 -- cualquier usuario, no solo del dueño del registro, así que el update
 -- se deja abierto a cualquier autenticado.
@@ -267,6 +314,15 @@ create policy "fotos_subida_autenticados" on storage.objects for insert
   with check (bucket_id = 'fotos' and auth.uid() is not null);
 create policy "fotos_actualizacion_autenticados" on storage.objects for update
   using (bucket_id = 'fotos' and auth.uid() is not null);
+
+-- =====================================================================
+-- =====================================================================
+-- Clases/espacios de partida (ajusta o añade las tuyas)
+-- =====================================================================
+insert into clases (nombre, permite_operaciones) values
+  ('SMR2', true),
+  ('FPB1', false)
+on conflict (nombre) do nothing;
 
 -- =====================================================================
 -- Datos de ejemplo para bloques lectivos (ajusta a tu horario real)

@@ -11,6 +11,7 @@ export default function AlumnoDashboard({ perfil }) {
   const [cargando, setCargando] = useState(true)
   const [equipos, setEquipos] = useState([])
   const [personas, setPersonas] = useState([])
+  const [clase, setClase] = useState(null)
   const [registroActivo, setRegistroActivo] = useState(null) // {registro, participacion}
   const [equipoParaUnirse, setEquipoParaUnirse] = useState(null)
   const [editandoEquipo, setEditandoEquipo] = useState(null)
@@ -19,11 +20,26 @@ export default function AlumnoDashboard({ perfil }) {
   const cargarTodo = useCallback(async () => {
     setCargando(true)
 
+    let claseInfo = null
+    if (perfil.clase_id) {
+      const { data } = await supabase.from('clases').select('*').eq('id', perfil.clase_id).single()
+      claseInfo = data
+    }
+    setClase(claseInfo)
+
     const { data: eq } = await supabase.from('equipos').select('*').order('codigo')
     setEquipos(eq || [])
 
     const { data: todasLasPersonas } = await supabase.from('profiles').select('id, nombre, username, rol').order('nombre')
     setPersonas(todasLasPersonas || [])
+
+    // Si esta clase no tiene el registro de operaciones activado, nos
+    // quedamos solo con el inventario: no hace falta cargar ni contar nada más.
+    if (!claseInfo || !claseInfo.permite_operaciones) {
+      setRegistroActivo(null)
+      setCargando(false)
+      return
+    }
 
     const { data: todosLosBloques } = await supabase.from('bloques_lectivos').select('*')
 
@@ -44,7 +60,7 @@ export default function AlumnoDashboard({ perfil }) {
     setRegistroActivo(activo ? { registro: activo.registros, participacion: activo } : null)
 
     setCargando(false)
-  }, [perfil.id])
+  }, [perfil.id, perfil.clase_id])
 
   useEffect(() => { cargarTodo() }, [cargarTodo])
 
@@ -99,6 +115,28 @@ export default function AlumnoDashboard({ perfil }) {
 
   if (cargando) return <p>Cargando…</p>
 
+  if (!perfil.clase_id) {
+    return (
+      <div className="aviso-box">
+        <h2>Todavía no tienes clase asignada</h2>
+        <p>Pídele a tu profesor/a que te asigne a una clase (por ejemplo SMR2 o FPB1) antes de continuar — sin eso no puedes ver ni gestionar ningún equipo.</p>
+      </div>
+    )
+  }
+
+  // Clase sin operaciones activadas (de momento, ej. FPB1): solo inventario.
+  if (clase && !clase.permite_operaciones) {
+    return (
+      <SoloInventario
+        equipos={equipos}
+        clase={clase}
+        editandoEquipo={editandoEquipo}
+        setEditandoEquipo={setEditandoEquipo}
+        onCambio={cargarTodo}
+      />
+    )
+  }
+
   let contenido
   if (equipoParaUnirse) {
     contenido = (
@@ -127,6 +165,7 @@ export default function AlumnoDashboard({ perfil }) {
         {editandoEquipo && (
           <FormularioEquipo
             equipo={editandoEquipo === 'nuevo' ? null : equipos.find(e => e.id === editandoEquipo)}
+            claseFija={perfil.clase_id}
             onGuardado={() => { setEditandoEquipo(null); cargarTodo() }}
             onCancelar={() => setEditandoEquipo(null)}
           />
@@ -180,6 +219,59 @@ export default function AlumnoDashboard({ perfil }) {
         </button>
       </div>
       {vista === 'historial' ? <HistorialAlumno perfil={perfil} /> : contenido}
+    </div>
+  )
+}
+
+function SoloInventario({ equipos, clase, editandoEquipo, setEditandoEquipo, onCambio }) {
+  return (
+    <div>
+      <div className="aviso-inline">
+        📦 Tu clase ({clase.nombre}) de momento solo gestiona el inventario de equipos — el registro de
+        operaciones no está disponible todavía.
+      </div>
+
+      {editandoEquipo && (
+        <FormularioEquipo
+          equipo={editandoEquipo === 'nuevo' ? null : equipos.find(e => e.id === editandoEquipo)}
+          claseFija={clase.id}
+          onGuardado={() => { setEditandoEquipo(null); onCambio() }}
+          onCancelar={() => setEditandoEquipo(null)}
+        />
+      )}
+
+      <div className="cabecera-equipos">
+        <h2>Inventario de {clase.nombre}</h2>
+        <button className="secundario" onClick={() => setEditandoEquipo('nuevo')}>+ Añadir equipo</button>
+      </div>
+      <div className="grid-equipos">
+        {equipos.map(eq => (
+          <div key={eq.id} className="equipo-card">
+            <div className="equipo-card-boton">
+              <div className="equipo-card-titulo">
+                <strong>{eq.codigo}</strong>
+                {eq.ultimo_estado_funcional && (
+                  <span
+                    className="punto-estado"
+                    style={{ background: colorEstadoEquipo(eq.ultimo_estado_funcional) }}
+                    title={etiquetaEstadoEquipo(eq.ultimo_estado_funcional)}
+                  />
+                )}
+              </div>
+              <span>{eq.tipo} {eq.modelo_basico}</span>
+              {(eq.ram || eq.disco || eq.procesador) && (
+                <span className="muted ficha-tecnica">
+                  {[eq.procesador, eq.ram, eq.disco].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              {eq.notas_inventario && <span className="aviso-equipo">⚠ {eq.notas_inventario}</span>}
+              <GaleriaFotos urls={eq.fotos_urls} />
+            </div>
+            <button className="link-btn editar-equipo" onClick={() => setEditandoEquipo(eq.id)}>Editar ficha del equipo</button>
+          </div>
+        ))}
+        {equipos.length === 0 && <p>Todavía no hay equipos cargados. Añade el primero con el botón de arriba.</p>}
+      </div>
     </div>
   )
 }

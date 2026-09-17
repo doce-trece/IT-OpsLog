@@ -11,6 +11,7 @@ export default function ProfesorDashboard({ perfil }) {
   const [registros, setRegistros] = useState([])
   const [equipos, setEquipos] = useState([])
   const [personas, setPersonas] = useState([])
+  const [clases, setClases] = useState([])
   const [cargando, setCargando] = useState(true)
   const [seleccionado, setSeleccionado] = useState(null)
   const [alumnoFiltro, setAlumnoFiltro] = useState(null)
@@ -19,13 +20,14 @@ export default function ProfesorDashboard({ perfil }) {
 
   const irAEquipos = () => { setVista('equipos'); setSeleccionado(null); setEquipoEditando(null) }
   const irAPorAlumno = () => { setVista('porAlumno'); setSeleccionado(null) }
+  const irAClases = () => { setVista('clases'); setSeleccionado(null) }
 
   const cargar = useCallback(async () => {
     setCargando(true)
 
     const { data: reg } = await supabase
       .from('registros')
-      .select('*, equipos(codigo, tipo, modelo_basico), registro_alumnos(*, profiles(nombre, username)), notas_profesor(*)')
+      .select('*, equipos(codigo, tipo, modelo_basico, clase_id), registro_alumnos(*, profiles(nombre, username)), notas_profesor(*)')
       .order('created_at', { ascending: false })
     setRegistros(reg || [])
 
@@ -35,12 +37,16 @@ export default function ProfesorDashboard({ perfil }) {
     const { data: per } = await supabase.from('profiles').select('*').order('nombre')
     setPersonas(per || [])
 
+    const { data: cl } = await supabase.from('clases').select('*').order('nombre')
+    setClases(cl || [])
+
     setCargando(false)
   }, [])
 
   useEffect(() => { cargar() }, [cargar])
 
   const personasPorId = Object.fromEntries(personas.map(p => [p.id, p]))
+  const clasesPorId = Object.fromEntries(clases.map(c => [c.id, c]))
   const alumnos = personas.filter(p => p.rol === 'alumno')
 
   const abiertas = registros.filter(r => r.estado === 'abierto')
@@ -62,6 +68,7 @@ export default function ProfesorDashboard({ perfil }) {
         <div className="accesos-rapidos">
           <button className="icono-acceso" title="Ir a gestión de equipos" onClick={irAEquipos}>🖥️ Equipos</button>
           <button className="icono-acceso" title="Ir a por alumno" onClick={irAPorAlumno}>👤 Por alumno</button>
+          <button className="icono-acceso" title="Ir a clases" onClick={irAClases}>🏫 Clases</button>
         </div>
         <nav className="tabs">
           <button className={vista === 'abiertas' ? 'activo' : ''} onClick={() => { setVista('abiertas'); setSeleccionado(null) }}>
@@ -82,6 +89,9 @@ export default function ProfesorDashboard({ perfil }) {
           <button className={vista === 'equipos' ? 'activo' : ''} onClick={irAEquipos}>
             Equipos
           </button>
+          <button className={vista === 'clases' ? 'activo' : ''} onClick={irAClases}>
+            Clases
+          </button>
         </nav>
 
         {vista === 'porAlumno' && (
@@ -93,7 +103,7 @@ export default function ProfesorDashboard({ perfil }) {
         {vista === 'porEquipo' && (
           <select className="selector-filtro" value={equipoFiltro || ''} onChange={e => setEquipoFiltro(e.target.value ? Number(e.target.value) : null)}>
             <option value="">Elige un equipo…</option>
-            {equipos.map(e => <option key={e.id} value={e.id}>{e.codigo} — {e.tipo}</option>)}
+            {equipos.map(e => <option key={e.id} value={e.id}>{e.codigo} — {e.tipo} ({clasesPorId[e.clase_id]?.nombre})</option>)}
           </select>
         )}
 
@@ -103,7 +113,7 @@ export default function ProfesorDashboard({ perfil }) {
           </p>
         )}
 
-        {vista !== 'equipos' && vista !== 'porAlumno' && (
+        {vista !== 'equipos' && vista !== 'porAlumno' && vista !== 'clases' && (
           <ul className="lista-registros">
             {cargando && <li className="muted">Cargando…</li>}
             {!cargando && listaVisible.length === 0 && <li className="muted">Nada que mostrar</li>}
@@ -138,10 +148,19 @@ export default function ProfesorDashboard({ perfil }) {
         {vista === 'equipos' && (
           <GestionEquipos
             equipos={equipos}
+            clases={clases}
             personasPorId={personasPorId}
             onCambio={cargar}
             editando={equipoEditando}
             setEditando={setEquipoEditando}
+          />
+        )}
+
+        {vista === 'clases' && (
+          <GestionClases
+            clases={clases}
+            alumnos={alumnos}
+            onCambio={cargar}
           />
         )}
 
@@ -182,7 +201,7 @@ export default function ProfesorDashboard({ perfil }) {
           </div>
         )}
 
-        {vista !== 'equipos' && vista !== 'porAlumno' && seleccionado && (
+        {vista !== 'equipos' && vista !== 'porAlumno' && vista !== 'clases' && seleccionado && (
           <DetalleRegistro
             key={seleccionado.id}
             registro={seleccionado}
@@ -191,7 +210,7 @@ export default function ProfesorDashboard({ perfil }) {
             onCambio={() => { setSeleccionado(null); cargar() }}
           />
         )}
-        {vista !== 'equipos' && vista !== 'porAlumno' && !seleccionado && <p className="muted">Selecciona un registro de la lista.</p>}
+        {vista !== 'equipos' && vista !== 'porAlumno' && vista !== 'clases' && !seleccionado && <p className="muted">Selecciona un registro de la lista.</p>}
       </section>
     </div>
   )
@@ -399,9 +418,82 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
   )
 }
 
-function GestionEquipos({ equipos, personasPorId, onCambio, editando, setEditando }) {
+function GestionClases({ clases, alumnos, onCambio }) {
+  const [nombreNueva, setNombreNueva] = useState('')
+  const [permiteOperaciones, setPermiteOperaciones] = useState(true)
+  const [guardando, setGuardando] = useState(false)
+
+  async function anadirClase(e) {
+    e.preventDefault()
+    if (!nombreNueva.trim()) return
+    setGuardando(true)
+    const { error } = await supabase.from('clases').insert({ nombre: nombreNueva.trim(), permite_operaciones: permiteOperaciones })
+    setGuardando(false)
+    if (error) { alert(error.message); return }
+    setNombreNueva('')
+    setPermiteOperaciones(true)
+    onCambio()
+  }
+
+  async function toggleOperaciones(clase) {
+    await supabase.from('clases').update({ permite_operaciones: !clase.permite_operaciones }).eq('id', clase.id)
+    onCambio()
+  }
+
+  async function asignarClase(alumnoId, claseId) {
+    await supabase.from('profiles').update({ clase_id: claseId || null }).eq('id', alumnoId)
+    onCambio()
+  }
+
+  return (
+    <div className="gestion-clases">
+      <h2>Clases</h2>
+      <form onSubmit={anadirClase} className="form-equipo">
+        <input placeholder="Nombre de la clase (ej. SMR2)" value={nombreNueva} onChange={e => setNombreNueva(e.target.value)} />
+        <label className="checkbox">
+          <input type="checkbox" checked={permiteOperaciones} onChange={e => setPermiteOperaciones(e.target.checked)} />
+          Tiene registro de operaciones activado (si no, solo gestionará inventario)
+        </label>
+        <button type="submit" disabled={guardando}>Añadir clase</button>
+      </form>
+
+      <ul className="lista-equipos-simple">
+        {clases.map(c => (
+          <li key={c.id}>
+            <div>
+              <strong>{c.nombre}</strong>
+              {' '}
+              <span className="muted">{c.permite_operaciones ? 'Con registro de operaciones' : 'Solo inventario'}</span>
+            </div>
+            <button className="secundario" onClick={() => toggleOperaciones(c)}>
+              {c.permite_operaciones ? 'Desactivar operaciones' : 'Activar operaciones'}
+            </button>
+          </li>
+        ))}
+        {clases.length === 0 && <p className="muted">Todavía no has creado ninguna clase.</p>}
+      </ul>
+
+      <h3>Asignar alumnos a una clase</h3>
+      <ul className="lista-equipos-simple">
+        {alumnos.map(a => (
+          <li key={a.id}>
+            <span>{nombreMostrable(a)}</span>
+            <select value={a.clase_id || ''} onChange={e => asignarClase(a.id, e.target.value ? Number(e.target.value) : null)}>
+              <option value="">Sin clase asignada</option>
+              {clases.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </li>
+        ))}
+        {alumnos.length === 0 && <p className="muted">Todavía no hay alumnos dados de alta.</p>}
+      </ul>
+    </div>
+  )
+}
+
+function GestionEquipos({ equipos, clases, personasPorId, onCambio, editando, setEditando }) {
   const [historialDe, setHistorialDe] = useState(null)
   const [historial, setHistorial] = useState([])
+  const clasesPorId = Object.fromEntries(clases.map(c => [c.id, c]))
 
   async function verHistorial(equipoId) {
     if (historialDe === equipoId) { setHistorialDe(null); return }
@@ -419,6 +511,7 @@ function GestionEquipos({ equipos, personasPorId, onCambio, editando, setEditand
       {editando ? (
         <FormularioEquipo
           equipo={editando === 'nuevo' ? null : equipos.find(e => e.id === editando)}
+          clases={clases}
           onGuardado={() => { setEditando(null); onCambio() }}
           onCancelar={() => setEditando(null)}
         />
@@ -435,6 +528,7 @@ function GestionEquipos({ equipos, personasPorId, onCambio, editando, setEditand
               <GaleriaFotos urls={e.fotos_urls} />
               <div>
                 <strong>{e.codigo}</strong> — {e.tipo} {e.modelo_basico}
+                {' '}<span className="badge">{clasesPorId[e.clase_id]?.nombre || '—'}</span>
                 {e.notas_inventario && <div className="muted">⚠ {e.notas_inventario}</div>}
                 {e.ultima_modificacion_en && (
                   <div className="muted">
