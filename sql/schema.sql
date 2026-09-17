@@ -7,7 +7,8 @@
 create table if not exists clases (
   id bigint generated always as identity primary key,
   nombre text unique not null,
-  permite_operaciones boolean not null default true -- si es false, esa clase solo gestiona inventario
+  permite_operaciones boolean not null default true, -- si es false, esa clase solo gestiona inventario
+  visible_para_alumnos boolean not null default true -- si es false (ej. "Otros usos"), no aparece en ningún panel de alumno
 );
 
 -- ---------- PERFILES (alumno / profesor) ----------
@@ -200,15 +201,18 @@ create policy "profiles_update_own" on profiles for update
 
 -- CLASES: cualquier autenticado puede verlas; solo el profesor las crea/edita
 alter table clases enable row level security;
-create policy "clases_select" on clases for select using (auth.uid() is not null);
+create policy "clases_select" on clases for select
+  using (is_profesor() or visible_para_alumnos = true);
 create policy "clases_write_profesor" on clases for all using (is_profesor()) with check (is_profesor());
 
--- EQUIPOS: cada clase ve y gestiona SOLO su propio inventario; el
--- profesor ve y gestiona todas. Solo el profesor puede borrar.
+-- EQUIPOS: cada clase ve y edita SOLO su propio inventario (el profesor
+-- ve y edita todas). Dar de alta un equipo nuevo está abierto a cualquier
+-- clase (un alumno puede fichar un equipo directamente en otra clase).
+-- Solo el profesor puede borrar.
 create policy "equipos_select" on equipos for select
   using (is_profesor() or clase_id = clase_actual());
 create policy "equipos_insert_autenticado" on equipos for insert
-  with check (puede_gestionar_equipo(clase_id));
+  with check (auth.uid() is not null);
 create policy "equipos_update_estado" on equipos for update
   using (puede_gestionar_equipo(clase_id))
   with check (puede_gestionar_equipo(clase_id));
@@ -319,9 +323,10 @@ create policy "fotos_actualizacion_autenticados" on storage.objects for update
 -- =====================================================================
 -- Clases/espacios de partida (ajusta o añade las tuyas)
 -- =====================================================================
-insert into clases (nombre, permite_operaciones) values
-  ('SMR2', true),
-  ('FPB1', false)
+insert into clases (nombre, permite_operaciones, visible_para_alumnos) values
+  ('SMR2', true, true),
+  ('FPB1', false, true),
+  ('Otros usos', false, false)
 on conflict (nombre) do nothing;
 
 -- =====================================================================

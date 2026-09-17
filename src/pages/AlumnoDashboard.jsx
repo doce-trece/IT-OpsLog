@@ -12,6 +12,7 @@ export default function AlumnoDashboard({ perfil }) {
   const [equipos, setEquipos] = useState([])
   const [personas, setPersonas] = useState([])
   const [clase, setClase] = useState(null)
+  const [clasesDisponibles, setClasesDisponibles] = useState([])
   const [registroActivo, setRegistroActivo] = useState(null) // {registro, participacion}
   const [equipoParaUnirse, setEquipoParaUnirse] = useState(null)
   const [editandoEquipo, setEditandoEquipo] = useState(null)
@@ -26,6 +27,11 @@ export default function AlumnoDashboard({ perfil }) {
       claseInfo = data
     }
     setClase(claseInfo)
+
+    // Las clases que puede ver el alumno (el profesor puede tener alguna
+    // oculta, como "Otros usos", que nunca debe aparecer aquí).
+    const { data: clasesVisibles } = await supabase.from('clases').select('*').order('nombre')
+    setClasesDisponibles(clasesVisibles || [])
 
     const { data: eq } = await supabase.from('equipos').select('*').order('codigo')
     setEquipos(eq || [])
@@ -130,6 +136,7 @@ export default function AlumnoDashboard({ perfil }) {
       <SoloInventario
         equipos={equipos}
         clase={clase}
+        clasesDisponibles={clasesDisponibles}
         editandoEquipo={editandoEquipo}
         setEditandoEquipo={setEditandoEquipo}
         onCambio={cargarTodo}
@@ -166,6 +173,7 @@ export default function AlumnoDashboard({ perfil }) {
           <FormularioEquipo
             equipo={editandoEquipo === 'nuevo' ? null : equipos.find(e => e.id === editandoEquipo)}
             claseFija={perfil.clase_id}
+            clases={clasesDisponibles}
             onGuardado={() => { setEditandoEquipo(null); cargarTodo() }}
             onCancelar={() => setEditandoEquipo(null)}
           />
@@ -223,7 +231,7 @@ export default function AlumnoDashboard({ perfil }) {
   )
 }
 
-function SoloInventario({ equipos, clase, editandoEquipo, setEditandoEquipo, onCambio }) {
+function SoloInventario({ equipos, clase, clasesDisponibles, editandoEquipo, setEditandoEquipo, onCambio }) {
   return (
     <div>
       <div className="aviso-inline">
@@ -235,6 +243,7 @@ function SoloInventario({ equipos, clase, editandoEquipo, setEditandoEquipo, onC
         <FormularioEquipo
           equipo={editandoEquipo === 'nuevo' ? null : equipos.find(e => e.id === editandoEquipo)}
           claseFija={clase.id}
+          clases={clasesDisponibles}
           onGuardado={() => { setEditandoEquipo(null); onCambio() }}
           onCancelar={() => setEditandoEquipo(null)}
         />

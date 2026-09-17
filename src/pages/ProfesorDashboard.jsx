@@ -506,6 +506,20 @@ function GestionEquipos({ equipos, clases, personasPorId, onCambio, editando, se
     setHistorialDe(equipoId)
   }
 
+  async function eliminarEquipo(equipo) {
+    if (!window.confirm(`¿Eliminar por completo el equipo ${equipo.codigo}? Esto también borrará su historial y no se puede deshacer.`)) return
+    const { error } = await supabase.from('equipos').delete().eq('id', equipo.id)
+    if (error) {
+      if (error.message.includes('foreign key') || error.code === '23503') {
+        alert(`No se puede eliminar ${equipo.codigo}: todavía tiene registros de operaciones asociados. Elimínalos primero (o márcalos como revisados) si de verdad quieres borrar el equipo.`)
+      } else {
+        alert('No se pudo eliminar: ' + error.message)
+      }
+      return
+    }
+    onCambio()
+  }
+
   return (
     <div className="gestion-equipos">
       {editando ? (
@@ -540,6 +554,7 @@ function GestionEquipos({ equipos, clases, personasPorId, onCambio, editando, se
                 <span className={`badge estado-${e.estado}`}>{e.estado}</span>
                 <button className="secundario" onClick={() => setEditando(e.id)}>Editar</button>
                 <button className="secundario" onClick={() => verHistorial(e.id)}>Historial</button>
+                <button className="peligro" onClick={() => eliminarEquipo(e)}>Eliminar</button>
               </div>
             </div>
             {historialDe === e.id && (

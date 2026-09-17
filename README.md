@@ -248,7 +248,26 @@ Ejecuta `sql/fix_v13_clases.sql` en Supabase. Esto:
   activar/desactivar el registro de operaciones de cada una en cualquier
   momento, todo desde la pestaña "Clases".
 
-## 16. Cómo funciona el flujo (actualizado)
+## 17. Alta libre de clase, "Otros usos" oculta y borrado de equipos (v14)
+
+Ejecuta `sql/fix_v14_alta_libre_y_otros_usos.sql` en Supabase:
+
+- Al dar de alta un equipo (alumno o profesor), ahora aparece siempre un
+  selector de clase — un alumno de SMR2 puede fichar un equipo
+  directamente en FPB1 si hace falta, no está limitado a la suya. Editar
+  un equipo ya existente sigue restringido a tu propia clase (o al
+  profesor, que puede con todas).
+- Nueva clase de partida **"Otros usos"**, con `visible_para_alumnos =
+  false`: no aparece en ningún selector ni listado de ningún alumno, solo
+  el profesor la ve (en la pestaña "Clases" y en los selectores de
+  equipo). Sirve para material que no pertenece a ninguna clase concreta.
+- El profesor ya puede **eliminar cualquier equipo** desde el panel
+  (botón "Eliminar" en cada fila de la pestaña Equipos). Si el equipo
+  tiene registros de operaciones asociados, no se puede borrar hasta
+  quitar esos registros primero (la app te avisa con un mensaje claro en
+  vez del error técnico de la base de datos).
+
+## 18. Cómo funciona el flujo (actualizado)
 
 - **Alumno**: entra → ve el bloque lectivo actual → elige un equipo libre (o
   se une a uno "ocupado" si un compañero ya abrió un registro en grupo) →
