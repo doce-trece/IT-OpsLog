@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+
 // ---------------------------------------------------------------------
 // Modelo: cada vez que el alumno "se conecta" (entra en la app y tiene
 // este registro activo) se sella el bloque lectivo que corresponde a ese
@@ -22,6 +24,18 @@ function bloqueEnEsteInstante(bloques, fecha) {
   const diaSemana = fecha.getDay() === 0 ? 7 : fecha.getDay()
   const horaActual = fecha.toTimeString().slice(0, 8)
   return (bloques || []).find(b => b.dia_semana === diaSemana && b.hora_inicio <= horaActual && b.hora_fin >= horaActual) || null
+}
+
+// Hook: fuerza un re-render cada 30s mientras "activo" sea verdadero, para
+// que el tiempo conectado se vea avanzar en pantalla en vivo (si no,
+// solo se recalcula la próxima vez que el componente se vuelva a montar).
+export function useRelojEnVivo(activo) {
+  const [, forzar] = useState(0)
+  useEffect(() => {
+    if (!activo) return
+    const id = setInterval(() => forzar(n => n + 1), 30000)
+    return () => clearInterval(id)
+  }, [activo])
 }
 
 // Días de calendario que lleva abierto, sesiones (bloques) contadas y

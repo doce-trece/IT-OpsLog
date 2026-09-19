@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { ESTADOS_EQUIPO_FINAL, etiquetaEstadoEquipo, colorEstadoEquipo, formatearDuracion } from '../lib/estados'
-import { calcularSesionesYDias, tiempoConectadoMs } from '../lib/sesiones'
+import { calcularSesionesYDias, tiempoConectadoMs, useRelojEnVivo } from '../lib/sesiones'
 import { nombreMostrable } from '../lib/personas'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
 import GaleriaFotos from '../components/GaleriaFotos.jsx'
@@ -256,6 +256,22 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
     onCambio()
   }
 
+  async function reabrirRevision() {
+    if (!window.confirm(
+      '⚠ Vas a reabrir este registro después de haberlo revisado.\n\n' +
+      'Volverá a "en revisión", el alumno podrá seguir editándolo y el equipo ' +
+      'quedará bloqueado para otros hasta que lo vuelvas a marcar como revisado.\n\n' +
+      '¿Seguro que quieres continuar?'
+    )) return
+
+    await supabase
+      .from('registros')
+      .update({ estado: 'en_revision', revisado_por: null, revisado_en: null })
+      .eq('id', registro.id)
+    await supabase.from('equipos').update({ estado: 'en_revision' }).eq('id', registro.equipo_id)
+    onCambio()
+  }
+
   async function guardarEstadoEquipo() {
     await supabase.from('registros').update({ estado_equipo_final: estadoNuevo }).eq('id', registro.id)
     await supabase.from('equipos').update({ ultimo_estado_funcional: estadoNuevo }).eq('id', registro.equipo_id)
@@ -296,6 +312,7 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
   const personasAyuda = Object.values(personasPorId)
   const ayudaDeNombres = ayudaDe.map(id => nombreMostrable(personasPorId[id])).join(', ')
   const { diasCalendario, diasTrabajados, sesiones } = calcularSesionesYDias(registro)
+  useRelojEnVivo(Boolean(registro.conexion_iniciada_en))
   const tiempoConectado = tiempoConectadoMs(registro)
 
   return (
@@ -407,6 +424,11 @@ function DetalleRegistro({ registro, perfil, personasPorId, onCambio }) {
         {registro.estado !== 'revisado' && (
           <button className="finalizar" onClick={marcarRevisado}>
             Marcar como revisado (libera el equipo)
+          </button>
+        )}
+        {registro.estado === 'revisado' && (
+          <button className="secundario" onClick={reabrirRevision}>
+            Reabrir (deshacer revisión)
           </button>
         )}
         <button className="peligro" onClick={eliminarRegistro}>Eliminar registro</button>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
 import { ESTADOS_EQUIPO_FINAL, colorEstadoEquipo, etiquetaEstadoEquipo, formatearDuracion } from '../lib/estados'
-import { calcularSesionesYDias, tiempoConectadoMs, registrarConexion, cerrarConexion } from '../lib/sesiones'
+import { calcularSesionesYDias, tiempoConectadoMs, registrarConexion, cerrarConexion, useRelojEnVivo } from '../lib/sesiones'
 import { subirFoto, subirFotos } from '../lib/fotos'
 import { nombreMostrable } from '../lib/personas'
 import GaleriaFotos from '../components/GaleriaFotos.jsx'
@@ -53,9 +53,13 @@ export default function AlumnoDashboard({ perfil }) {
       .from('registro_alumnos')
       .select('*, registros(*)')
       .eq('alumno_id', perfil.id)
+      .order('registro_id', { ascending: false })
 
-    // "Activo" = cualquier registro propio que aún no haya sido revisado,
-    // esté abierto o ya enviado a revisión: se sigue pudiendo editar.
+    // "Activo" = tu registro propio MÁS RECIENTE que aún no haya sido
+    // revisado (esté abierto o ya enviado a revisión): se sigue pudiendo
+    // editar. Si por cualquier motivo hay más de uno sin revisar (no
+    // debería, pero por ejemplo restos de pruebas), nos quedamos con el
+    // más nuevo, nunca con uno antiguo.
     const activo = (misParticipaciones || []).find(p => p.registros && p.registros.estado !== 'revisado')
 
     // Cuenta como conexión: sella el bloque del instante actual y arranca
@@ -301,6 +305,7 @@ function OperacionActiva({ registro, participacion, personas, onCambio, onElimin
   const [ayudaDe, setAyudaDe] = useState(registro.ayuda_recibida_de || [])
 
   const { diasCalendario, diasTrabajados, sesiones } = calcularSesionesYDias(registro)
+  useRelojEnVivo(Boolean(registro.conexion_iniciada_en))
   const tiempoConectado = tiempoConectadoMs(registro)
 
   async function guardarTitulo() {
