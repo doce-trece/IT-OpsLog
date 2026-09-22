@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from './supabaseClient'
-import { marcarActividadSesionActual } from './lib/sesiones'
+import { cerrarConexionSesionActual } from './lib/sesiones'
+import { useInactividad } from './lib/useInactividad'
+import { nombreMostrable } from './lib/personas'
 import Login from './pages/Login.jsx'
 import SetNewPassword from './pages/SetNewPassword.jsx'
 import AlumnoDashboard from './pages/AlumnoDashboard.jsx'
@@ -10,6 +12,7 @@ export default function App() {
   const [session, setSession] = useState(undefined) // undefined = cargando
   const [perfil, setPerfil] = useState(null)
   const [modoRecuperacion, setModoRecuperacion] = useState(false)
+  const inactivo = useInactividad()
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -54,11 +57,16 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      {inactivo && (
+        <div className="aviso-inactividad">
+          ⏰ Recuerda cerrar la sesión si has terminado por hoy.
+        </div>
+      )}
       <header className="app-header">
         <h1>Taller — Registro de operaciones</h1>
         <div className="user-box">
-          <span>{perfil.nombre} · {perfil.rol === 'profesor' ? 'Profesor/a' : 'Alumno/a'}</span>
-          <button onClick={async () => { await marcarActividadSesionActual(supabase); await supabase.auth.signOut() }}>Cerrar sesión</button>
+          <span>{nombreMostrable(perfil)} · {perfil.rol === 'profesor' ? 'Profesor/a' : 'Alumno/a'}</span>
+          <button onClick={async () => { await cerrarConexionSesionActual(supabase); await supabase.auth.signOut() }}>Cerrar sesión</button>
         </div>
       </header>
       <main>

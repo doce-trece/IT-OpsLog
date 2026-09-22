@@ -82,7 +82,9 @@ textarea, select, input[type=text] { padding: 0.6rem; border: 1px solid var(--bo
 .selector-filtro { width: 100%; margin-bottom: 0.8rem; padding: 0.5rem; border-radius: 6px; border: 1px solid var(--borde); }
 .total-tiempo { margin-bottom: 0.8rem; font-weight: 600; }
 .acciones-profesor { margin-top: 1rem; }
-.fila-equipo { border-bottom: 1px solid var(--borde); padding: 0.6rem 0; }
+.fila-equipo { border: 1px solid var(--borde); border-radius: 8px; padding: 0.7rem 0.8rem; margin-bottom: 0.6rem; background: white; }
+.fila-equipo-titulo { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.fila-equipo-modificacion { margin: 0.15rem 0 0.3rem; font-size: 0.8rem; }
 .fila-equipo-cabecera { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.8rem; }
 .fila-equipo-acciones { display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0; }
 .historial-equipo { margin-top: 0.5rem; padding: 0.6rem; background: #fafafa; border-radius: 6px; display: flex; flex-direction: column; gap: 0.4rem; }
@@ -113,6 +115,22 @@ textarea, select, input[type=text] { padding: 0.6rem; border: 1px solid var(--bo
 .titulo-dia { text-transform: capitalize; font-size: 1rem; border-bottom: 1px solid var(--borde); padding-bottom: 0.3rem; margin-bottom: 0.6rem; }
 .item-historial { background: white; border: 1px solid var(--borde); border-radius: 8px; padding: 0.7rem; margin-bottom: 0.5rem; display: flex; flex-direction: column; gap: 0.3rem; }
 
+/* Galería de fotos */
+.galeria-fotos { display: flex; flex-wrap: wrap; gap: 0.4rem; margin: 0.3rem 0; }
+
+/* Checkbox en línea, dentro de un <strong>: ... </strong> */
+.checkbox-inline { display: inline-flex; align-items: center; gap: 0.3rem; font-weight: 400; cursor: pointer; }
+.checkbox-inline input { width: auto; }
+
+/* Aviso de inactividad */
+.aviso-inactividad {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+  background: #fef3c7; color: #92400e; text-align: center;
+  padding: 0.7rem 1rem; font-size: 0.9rem; font-weight: 600;
+  display: flex; justify-content: center; align-items: center; gap: 1rem;
+}
+.aviso-inactividad button { background: none; border: 1px solid #92400e; color: #92400e; border-radius: 6px; padding: 0.2rem 0.6rem; cursor: pointer; font-size: 0.8rem; }
+
 /* Profesor */
 .profesor-grid { display: grid; grid-template-columns: 340px 1fr; gap: 1.5rem; align-items: start; }
 .tabs { display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 1rem; }
@@ -137,7 +155,12 @@ textarea, select, input[type=text] { padding: 0.6rem; border: 1px solid var(--bo
 .ok-msg { color: var(--verde); font-weight: 600; margin-top: 1rem; }
 
 .gestion-equipos { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1rem; }
+.gestion-clases { background: white; border: 1px solid var(--borde); border-radius: 10px; padding: 1rem; }
+.gestion-clases h3 { margin-top: 1.5rem; }
+.gestion-clases select { padding: 0.4rem; border-radius: 6px; border: 1px solid var(--borde); }
 .form-equipo { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .form-equipo button { background: var(--azul); color: white; border: none; padding: 0.5rem; border-radius: 6px; cursor: pointer; }
 .lista-equipos-simple { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; max-height: 300px; overflow-y: auto; }
+.gestion-equipos .lista-equipos-simple { max-height: 700px; }
 .lista-equipos-simple li { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; border-bottom: 1px solid var(--borde); padding: 0.3rem 0; }
+.lista-equipos-simple li.fila-equipo { display: block; border-bottom: none; }

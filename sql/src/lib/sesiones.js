@@ -1,78 +1,132 @@
-// Calcula cuántos días de calendario lleva abierto un registro (desde que
-// se creó hasta que se revisó, o hasta hoy si sigue en marcha), y cuántos
-// de esos días tuvo actividad real (alguien guardó algo ese día).
+import { useState, useEffect } from 'react'
+
+// ---------------------------------------------------------------------
+// Modelo: cada vez que el alumno "se conecta" (entra en la app y tiene
+// este registro activo) se sella el bloque lectivo que corresponde a ese
+// instante y arranca un cronómetro. Al "desconectar" (cerrar sesión, o
+// enviar el registro a revisión) se para el cronómetro y se suma el
+// tiempo transcurrido al total. Si se olvida cerrar sesión, se detecta
+// la próxima vez que se conecta y se estima ese tiempo con la duración
+// de los bloques que quedaron sellados aquel día.
+// ---------------------------------------------------------------------
+
+function claveBloque(fecha, bloqueId) {
+  return `${fecha}#${bloqueId}`
+}
+
+function duracionBloqueSegundos(bloque) {
+  const [hI, mI] = bloque.hora_inicio.split(':').map(Number)
+  const [hF, mF] = bloque.hora_fin.split(':').map(Number)
+  return ((hF * 60 + mF) - (hI * 60 + mI)) * 60
+}
+
+function bloqueEnEsteInstante(bloques, fecha) {
+  const diaSemana = fecha.getDay() === 0 ? 7 : fecha.getDay()
+  const horaActual = fecha.toTimeString().slice(0, 8)
+  return (bloques || []).find(b => b.dia_semana === diaSemana && b.hora_inicio <= horaActual && b.hora_fin >= horaActual) || null
+}
+
+// Hook: fuerza un re-render cada 30s mientras "activo" sea verdadero, para
+// que el tiempo conectado se vea avanzar en pantalla en vivo (si no,
+// solo se recalcula la próxima vez que el componente se vuelva a montar).
+export function useRelojEnVivo(activo) {
+  const [, forzar] = useState(0)
+  useEffect(() => {
+    if (!activo) return
+    const id = setInterval(() => forzar(n => n + 1), 30000)
+    return () => clearInterval(id)
+  }, [activo])
+}
+
+// Días de calendario que lleva abierto, sesiones (bloques) contadas y
+// días distintos con alguna sesión contada.
 export function calcularSesionesYDias(registro) {
   const inicio = new Date(registro.fecha_inicio)
   const fin = registro.revisado_en ? new Date(registro.revisado_en) : new Date()
   const diasCalendario = Math.max(1, Math.round((fin - inicio) / 86400000) + 1)
-  const fechasActividad = registro.fechas_actividad || [registro.fecha_inicio?.slice(0, 10)]
-  return {
-    diasCalendario,
-    diasTrabajados: fechasActividad.length,
-  }
+  const bloquesContados = registro.bloques_contados || []
+  const diasTrabajados = new Set(bloquesContados.map(c => c.split('#')[0])).size || (bloquesContados.length ? 1 : 0)
+  return { diasCalendario, diasTrabajados, sesiones: bloquesContados.length }
 }
 
-// Cuenta cuántos bloques lectivos (sesiones de aula) se han "usado" en la
-// operación, contando SOLO los días en los que hubo actividad real (no
-// todo el rango de calendario desde que se abrió, para no contar de más
-// los días en los que el alumno faltó o no tocó el registro) y, dentro
-// del día en que se abrió o se cerró, solo los bloques cuya franja
-// horaria realmente cae dentro del tiempo en que el registro ha estado
-// abierto (para no contar bloques anteriores al inicio ni posteriores al
-// momento actual).
-export function contarBloquesTranscurridos(bloques, registro) {
-  if (!bloques || bloques.length === 0) return 0
-  const fechasActividad = registro.fechas_actividad || [registro.fecha_inicio?.slice(0, 10)]
-  const inicioRegistro = new Date(registro.fecha_inicio)
-  const finRegistro = registro.revisado_en ? new Date(registro.revisado_en) : new Date()
-  const fechaInicioStr = registro.fecha_inicio?.slice(0, 10)
-  const fechaFinStr = finRegistro.toISOString().slice(0, 10)
+// Tiempo total conectado (ms), sumando el tramo en curso si hay una
+// conexión abierta ahora mismo.
+export function tiempoConectadoMs(registro) {
+  let total = (registro.tiempo_conectado_segundos || 0) * 1000
+  if (registro.conexion_iniciada_en) {
+    total += Date.now() - new Date(registro.conexion_iniciada_en).getTime()
+  }
+  return total
+}
 
-  let contador = 0
-  for (const fecha of fechasActividad) {
-    if (!fecha) continue
-    const [anio, mes, dia] = fecha.split('-').map(Number)
-    const diaSemanaJs = new Date(anio, mes - 1, dia).getDay()
-    const diaSemana = diaSemanaJs === 0 ? 7 : diaSemanaJs
+// Se llama al ENTRAR en la app (o recargarla) mientras el registro sigue
+// editable (no revisado). Sella el bloque del instante actual, y si
+// detecta una conexión de un día anterior que no se cerró, estima su
+// duración con los bloques que quedaron contados ese día.
+export async function registrarConexion(supabase, registro, bloques) {
+  const ahora = new Date()
+  const hoy = ahora.toISOString().slice(0, 10)
 
-    for (const b of bloques.filter(bl => bl.dia_semana === diaSemana)) {
-      const [hI, mI] = b.hora_inicio.split(':').map(Number)
-      const [hF, mF] = b.hora_fin.split(':').map(Number)
-      const inicioBloque = new Date(anio, mes - 1, dia, hI, mI, 0, 0)
-      const finBloque = new Date(anio, mes - 1, dia, hF, mF, 0, 0)
+  let bloquesContados = registro.bloques_contados || []
+  let tiempoConectado = registro.tiempo_conectado_segundos || 0
+  let conexionIniciada = registro.conexion_iniciada_en
 
-      // El día en que se abrió el registro: no cuentan los bloques que ya
-      // habían terminado antes de esa hora.
-      if (fecha === fechaInicioStr && finBloque <= inicioRegistro) continue
-      // El día en que se cerró (o hoy, si sigue abierto): no cuentan los
-      // bloques que todavía no habían empezado a esa hora.
-      if (fecha === fechaFinStr && inicioBloque > finRegistro) continue
-
-      contador++
+  if (conexionIniciada) {
+    const fechaConexion = conexionIniciada.slice(0, 10)
+    if (fechaConexion !== hoy) {
+      // No se cerró sesión aquel día: estimamos su duración con los
+      // bloques que quedaron sellados ese día.
+      const segundosEstimados = bloquesContados
+        .filter(c => c.startsWith(fechaConexion + '#'))
+        .reduce((acc, c) => {
+          const bloqueId = Number(c.split('#')[1])
+          const bloque = (bloques || []).find(b => b.id === bloqueId)
+          return acc + (bloque ? duracionBloqueSegundos(bloque) : 0)
+        }, 0)
+      tiempoConectado += segundosEstimados
+      conexionIniciada = null
     }
   }
-  return contador
+
+  if (!conexionIniciada) {
+    conexionIniciada = ahora.toISOString()
+  }
+
+  const bloqueActual = bloqueEnEsteInstante(bloques, ahora)
+  if (bloqueActual) {
+    const clave = claveBloque(hoy, bloqueActual.id)
+    if (!bloquesContados.includes(clave)) bloquesContados = [...bloquesContados, clave]
+  }
+
+  const cambios = {
+    bloques_contados: bloquesContados,
+    tiempo_conectado_segundos: tiempoConectado,
+    conexion_iniciada_en: conexionIniciada,
+  }
+  const { error } = await supabase.from('registros').update(cambios).eq('id', registro.id)
+  if (error) { console.error('No se pudo registrar la conexión:', error.message); return }
+  Object.assign(registro, cambios)
 }
 
-// Añade el día de hoy a la lista de días con actividad, si todavía no
-// estaba. Se llama al ENTRAR en la app (si hay un registro activo) y al
-// CERRAR SESIÓN, no cada vez que se guarda un cambio suelto.
-export async function registrarActividad(supabase, registro) {
-  const hoy = new Date().toISOString().slice(0, 10)
-  const fechasActuales = registro.fechas_actividad || [registro.fecha_inicio?.slice(0, 10)]
-  if (fechasActuales.includes(hoy)) return fechasActuales
-
-  const nuevasFechas = [...fechasActuales, hoy]
-  await supabase.from('registros').update({ fechas_actividad: nuevasFechas }).eq('id', registro.id)
-  registro.fechas_actividad = nuevasFechas // refleja el cambio sin esperar a recargar
-  return nuevasFechas
+// Se llama al CERRAR SESIÓN o al enviar el registro a revisión: para el
+// cronómetro y suma el tiempo transcurrido desde que se conectó.
+export async function cerrarConexion(supabase, registro) {
+  if (!registro.conexion_iniciada_en) return
+  const segundos = Math.max(0, Math.round((Date.now() - new Date(registro.conexion_iniciada_en).getTime()) / 1000))
+  const nuevoTiempo = (registro.tiempo_conectado_segundos || 0) + segundos
+  const { error } = await supabase
+    .from('registros')
+    .update({ tiempo_conectado_segundos: nuevoTiempo, conexion_iniciada_en: null })
+    .eq('id', registro.id)
+  if (error) { console.error('No se pudo cerrar la conexión:', error.message); return }
+  registro.tiempo_conectado_segundos = nuevoTiempo
+  registro.conexion_iniciada_en = null
 }
 
 // Busca si el usuario logueado tiene algún registro propio sin revisar y,
-// si lo tiene, marca el día de hoy como día con actividad. Pensada para
-// llamarla al entrar en la app y justo antes de cerrar sesión, sin
-// depender de qué pantalla esté montada en ese momento.
-export async function marcarActividadSesionActual(supabase) {
+// si lo tiene y estaba conectado, cierra esa conexión (para el botón de
+// "Cerrar sesión", sin depender de qué pantalla esté montada).
+export async function cerrarConexionSesionActual(supabase) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
@@ -82,5 +136,5 @@ export async function marcarActividadSesionActual(supabase) {
     .eq('alumno_id', user.id)
 
   const activo = (data || []).map(d => d.registros).find(r => r && r.estado !== 'revisado')
-  if (activo) await registrarActividad(supabase, activo)
+  if (activo) await cerrarConexion(supabase, activo)
 }

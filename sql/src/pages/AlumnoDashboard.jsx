@@ -1,15 +1,18 @@
 import { useEffect, useState, useCallback } from 'react'
 import { supabase } from '../supabaseClient'
-import { ESTADOS_EQUIPO_FINAL, colorEstadoEquipo, etiquetaEstadoEquipo } from '../lib/estados'
-import { calcularSesionesYDias, registrarActividad, contarBloquesTranscurridos } from '../lib/sesiones'
-import { subirFoto } from '../lib/fotos'
+import { ESTADOS_EQUIPO_FINAL, colorEstadoEquipo, etiquetaEstadoEquipo, formatearDuracion } from '../lib/estados'
+import { calcularSesionesYDias, tiempoConectadoMs, registrarConexion, cerrarConexion, useRelojEnVivo } from '../lib/sesiones'
+import { subirFoto, subirFotos } from '../lib/fotos'
+import { nombreMostrable } from '../lib/personas'
+import GaleriaFotos from '../components/GaleriaFotos.jsx'
 import FormularioEquipo from '../components/FormularioEquipo.jsx'
 
 export default function AlumnoDashboard({ perfil }) {
   const [cargando, setCargando] = useState(true)
   const [equipos, setEquipos] = useState([])
   const [personas, setPersonas] = useState([])
-  const [bloques, setBloques] = useState([])
+  const [clase, setClase] = useState(null)
+  const [clasesDisponibles, setClasesDisponibles] = useState([])
   const [registroActivo, setRegistroActivo] = useState(null) // {registro, participacion}
   const [equipoParaUnirse, setEquipoParaUnirse] = useState(null)
   const [editandoEquipo, setEditandoEquipo] = useState(null)
@@ -18,31 +21,56 @@ export default function AlumnoDashboard({ perfil }) {
   const cargarTodo = useCallback(async () => {
     setCargando(true)
 
+    let claseInfo = null
+    if (perfil.clase_id) {
+      const { data } = await supabase.from('clases').select('*').eq('id', perfil.clase_id).single()
+      claseInfo = data
+    }
+    setClase(claseInfo)
+
+    // Las clases que puede ver el alumno (el profesor puede tener alguna
+    // oculta, como "Otros usos", que nunca debe aparecer aquí).
+    const { data: clasesVisibles } = await supabase.from('clases').select('*').order('nombre')
+    setClasesDisponibles(clasesVisibles || [])
+
     const { data: eq } = await supabase.from('equipos').select('*').order('codigo')
     setEquipos(eq || [])
 
-    const { data: todasLasPersonas } = await supabase.from('profiles').select('id, nombre, rol').order('nombre')
+    const { data: todasLasPersonas } = await supabase.from('profiles').select('id, nombre, username, rol').order('nombre')
     setPersonas(todasLasPersonas || [])
 
+    // Si esta clase no tiene el registro de operaciones activado, nos
+    // quedamos solo con el inventario: no hace falta cargar ni contar nada más.
+    if (!claseInfo || !claseInfo.permite_operaciones) {
+      setRegistroActivo(null)
+      setCargando(false)
+      return
+    }
+
     const { data: todosLosBloques } = await supabase.from('bloques_lectivos').select('*')
-    setBloques(todosLosBloques || [])
 
     const { data: misParticipaciones } = await supabase
       .from('registro_alumnos')
       .select('*, registros(*)')
       .eq('alumno_id', perfil.id)
+      .order('registro_id', { ascending: false })
 
-    // "Activo" = cualquier registro propio que aún no haya sido revisado,
-    // esté abierto o ya enviado a revisión: se sigue pudiendo editar.
+    // "Activo" = tu registro propio MÁS RECIENTE que aún no haya sido
+    // revisado (esté abierto o ya enviado a revisión): se sigue pudiendo
+    // editar. Si por cualquier motivo hay más de uno sin revisar (no
+    // debería, pero por ejemplo restos de pruebas), nos quedamos con el
+    // más nuevo, nunca con uno antiguo.
     const activo = (misParticipaciones || []).find(p => p.registros && p.registros.estado !== 'revisado')
+
+    // Cuenta como conexión: sella el bloque del instante actual y arranca
+    // (o continúa) el cronómetro de tiempo conectado. Se hace ANTES de
+    // guardar el estado para que la pantalla ya muestre los datos al día.
+    if (activo) await registrarConexion(supabase, activo.registros, todosLosBloques || [])
+
     setRegistroActivo(activo ? { registro: activo.registros, participacion: activo } : null)
 
-    // Cuenta como "día de trabajo" haber entrado a la app con un registro
-    // activo, no cada vez que se pulsa Guardar.
-    if (activo) await registrarActividad(supabase, activo.registros)
-
     setCargando(false)
-  }, [perfil.id])
+  }, [perfil.id, perfil.clase_id])
 
   useEffect(() => { cargarTodo() }, [cargarTodo])
 
@@ -97,11 +125,34 @@ export default function AlumnoDashboard({ perfil }) {
 
   if (cargando) return <p>Cargando…</p>
 
+  if (!perfil.clase_id) {
+    return (
+      <div className="aviso-box">
+        <h2>Todavía no tienes clase asignada</h2>
+        <p>Pídele a tu profesor/a que te asigne a una clase (por ejemplo SMR2 o FPB1) antes de continuar — sin eso no puedes ver ni gestionar ningún equipo.</p>
+      </div>
+    )
+  }
+
+  // Clase sin operaciones activadas (de momento, ej. FPB1): solo inventario.
+  if (clase && !clase.permite_operaciones) {
+    return (
+      <SoloInventario
+        equipos={equipos}
+        clase={clase}
+        clasesDisponibles={clasesDisponibles}
+        editandoEquipo={editandoEquipo}
+        setEditandoEquipo={setEditandoEquipo}
+        onCambio={cargarTodo}
+      />
+    )
+  }
+
   let contenido
   if (equipoParaUnirse) {
     contenido = (
       <div className="aviso-box">
-        <h2>{equipoParaUnirse.equipo.nombre} ya está en uso</h2>
+        <h2>{equipoParaUnirse.equipo.codigo} · {equipoParaUnirse.equipo.tipo} ya está en uso</h2>
         <p>Un compañero/a tiene un registro abierto (o pendiente de revisión) sobre este equipo. ¿Quieres unirte para anotar tu propia parte del trabajo?</p>
         <div className="botones">
           <button onClick={unirseAGrupo}>Unirme al registro</button>
@@ -115,7 +166,6 @@ export default function AlumnoDashboard({ perfil }) {
         registro={registroActivo.registro}
         participacion={registroActivo.participacion}
         personas={personas.filter(p => p.id !== perfil.id)}
-        bloques={bloques}
         onCambio={cargarTodo}
         onEliminar={() => eliminarRegistro(registroActivo.registro)}
       />
@@ -126,6 +176,8 @@ export default function AlumnoDashboard({ perfil }) {
         {editandoEquipo && (
           <FormularioEquipo
             equipo={editandoEquipo === 'nuevo' ? null : equipos.find(e => e.id === editandoEquipo)}
+            claseFija={perfil.clase_id}
+            clases={clasesDisponibles}
             onGuardado={() => { setEditandoEquipo(null); cargarTodo() }}
             onCancelar={() => setEditandoEquipo(null)}
           />
@@ -183,7 +235,61 @@ export default function AlumnoDashboard({ perfil }) {
   )
 }
 
-function OperacionActiva({ registro, participacion, personas, bloques, onCambio, onEliminar }) {
+function SoloInventario({ equipos, clase, clasesDisponibles, editandoEquipo, setEditandoEquipo, onCambio }) {
+  return (
+    <div>
+      <div className="aviso-inline">
+        📦 Tu clase ({clase.nombre}) de momento solo gestiona el inventario de equipos — el registro de
+        operaciones no está disponible todavía.
+      </div>
+
+      {editandoEquipo && (
+        <FormularioEquipo
+          equipo={editandoEquipo === 'nuevo' ? null : equipos.find(e => e.id === editandoEquipo)}
+          claseFija={clase.id}
+          clases={clasesDisponibles}
+          onGuardado={() => { setEditandoEquipo(null); onCambio() }}
+          onCancelar={() => setEditandoEquipo(null)}
+        />
+      )}
+
+      <div className="cabecera-equipos">
+        <h2>Inventario de {clase.nombre}</h2>
+        <button className="secundario" onClick={() => setEditandoEquipo('nuevo')}>+ Añadir equipo</button>
+      </div>
+      <div className="grid-equipos">
+        {equipos.map(eq => (
+          <div key={eq.id} className="equipo-card">
+            <div className="equipo-card-boton">
+              <div className="equipo-card-titulo">
+                <strong>{eq.codigo}</strong>
+                {eq.ultimo_estado_funcional && (
+                  <span
+                    className="punto-estado"
+                    style={{ background: colorEstadoEquipo(eq.ultimo_estado_funcional) }}
+                    title={etiquetaEstadoEquipo(eq.ultimo_estado_funcional)}
+                  />
+                )}
+              </div>
+              <span>{eq.tipo} {eq.modelo_basico}</span>
+              {(eq.ram || eq.disco || eq.procesador) && (
+                <span className="muted ficha-tecnica">
+                  {[eq.procesador, eq.ram, eq.disco].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              {eq.notas_inventario && <span className="aviso-equipo">⚠ {eq.notas_inventario}</span>}
+              <GaleriaFotos urls={eq.fotos_urls} />
+            </div>
+            <button className="link-btn editar-equipo" onClick={() => setEditandoEquipo(eq.id)}>Editar ficha del equipo</button>
+          </div>
+        ))}
+        {equipos.length === 0 && <p>Todavía no hay equipos cargados. Añade el primero con el botón de arriba.</p>}
+      </div>
+    </div>
+  )
+}
+
+function OperacionActiva({ registro, participacion, personas, onCambio, onEliminar }) {
   const [titulo, setTitulo] = useState(registro.titulo || '')
   const [descripcion, setDescripcion] = useState(participacion.descripcion_operaciones || '')
   const [problemas, setProblemas] = useState(participacion.problemas_encontrados || '')
@@ -198,8 +304,9 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
   const [ayuda, setAyuda] = useState(registro.ayuda_recibida || false)
   const [ayudaDe, setAyudaDe] = useState(registro.ayuda_recibida_de || [])
 
-  const { diasCalendario, diasTrabajados } = calcularSesionesYDias(registro)
-  const sesiones = contarBloquesTranscurridos(bloques, registro)
+  const { diasCalendario, diasTrabajados, sesiones } = calcularSesionesYDias(registro)
+  useRelojEnVivo(Boolean(registro.conexion_iniciada_en))
+  const tiempoConectado = tiempoConectadoMs(registro)
 
   async function guardarTitulo() {
     await supabase.from('registros').update({ titulo }).eq('id', registro.id)
@@ -234,14 +341,16 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
     await supabase.from('registros').update({ ayuda_recibida_de: nuevaLista }).eq('id', registro.id)
   }
 
-  async function subirFotoOperacion(file) {
-    if (!file) return
+  async function subirFotoOperacion(files) {
+    if (!files || files.length === 0) return
     setSubiendoFoto(true)
-    const url = await subirFoto(file, 'operaciones')
+    const nuevas = await subirFotos(Array.from(files), 'operaciones')
     setSubiendoFoto(false)
-    if (!url) return
-    await supabase.from('registro_alumnos').update({ foto_url: url }).eq('id', participacion.id)
-    participacion.foto_url = url
+    if (nuevas.length === 0) return
+    const listaActual = participacion.fotos_urls || []
+    const listaNueva = [...listaActual, ...nuevas]
+    await supabase.from('registro_alumnos').update({ fotos_urls: listaNueva }).eq('id', participacion.id)
+    participacion.fotos_urls = listaNueva
     setFoto(null)
   }
 
@@ -261,6 +370,7 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
 
   async function enviarARevision() {
     await guardarParticipacion()
+    await cerrarConexion(supabase, registro) // para el cronómetro: no sigue sumando tiempo en revisión
     await supabase
       .from('registros')
       .update({ estado: 'en_revision', enviado_revision_en: new Date().toISOString() })
@@ -276,6 +386,7 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
         Inicio: {new Date(registro.fecha_inicio).toLocaleString('es-ES')}
         {' · '}Lleva abierto {diasCalendario} {diasCalendario === 1 ? 'día' : 'días'} ({diasTrabajados} con actividad)
         {' · '}{sesiones} {sesiones === 1 ? 'sesión de aula' : 'sesiones de aula'}
+        {' · '}Tiempo conectado: {formatearDuracion(tiempoConectado)}{registro.conexion_iniciada_en ? ' (en curso)' : ''}
       </p>
 
       {registro.estado === 'en_revision' && (
@@ -308,9 +419,9 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
         <textarea value={resultados} onChange={e => setResultados(e.target.value)} rows={3} />
       </label>
       <label>
-        Foto de la reparación (opcional)
-        {participacion.foto_url && <img src={participacion.foto_url} alt="" className="foto-previa" />}
-        <input type="file" accept="image/*" onChange={e => subirFotoOperacion(e.target.files[0])} disabled={subiendoFoto} />
+        Fotos de la reparación (opcional, puedes elegir varias)
+        <GaleriaFotos urls={participacion.fotos_urls} />
+        <input type="file" accept="image/*" multiple onChange={e => subirFotoOperacion(e.target.files)} disabled={subiendoFoto} />
         {subiendoFoto && <span className="muted">Subiendo…</span>}
       </label>
       <button onClick={guardarParticipacion} disabled={guardando}>
@@ -345,7 +456,7 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
                 checked={ayudaDe.includes(p.id)}
                 onChange={e => toggleAyudante(p.id, e.target.checked)}
               />
-              {p.nombre}{p.rol === 'profesor' ? ' (profesor/a)' : ''}
+              {nombreMostrable(p)}{p.rol === 'profesor' ? ' (profesor/a)' : ''}
             </label>
           ))}
         </div>
@@ -364,10 +475,8 @@ function OperacionActiva({ registro, participacion, personas, bloques, onCambio,
 function HistorialAlumno({ perfil }) {
   const [cargando, setCargando] = useState(true)
   const [participaciones, setParticipaciones] = useState([])
-  const [bloques, setBloques] = useState([])
 
   useEffect(() => {
-    supabase.from('bloques_lectivos').select('*').then(({ data }) => setBloques(data || []))
     supabase
       .from('registro_alumnos')
       .select('*, registros(*, equipos(codigo, tipo, modelo_basico))')
@@ -393,8 +502,7 @@ function HistorialAlumno({ perfil }) {
         <div key={dia} className="grupo-dia">
           <h3 className="titulo-dia">{dia}</h3>
           {items.map(p => {
-            const { diasCalendario } = calcularSesionesYDias(p.registros)
-            const sesiones = contarBloquesTranscurridos(bloques, p.registros)
+            const { diasCalendario, sesiones } = calcularSesionesYDias(p.registros)
             return (
               <div key={p.id} className={`item-historial estado-${p.registros.estado}`}>
                 <strong>{p.registros.titulo || `${p.registros.equipos?.codigo} · ${p.registros.equipos?.tipo}`}</strong>

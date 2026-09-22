@@ -568,9 +568,14 @@ function GestionEquipos({ equipos, clases, personasPorId, onCambio, editando, se
                   <span className="badge">{clasesPorId[e.clase_id]?.nombre || '—'}</span>
                 </div>
                 <div className="muted fila-equipo-modificacion">
-                  {e.ultima_modificacion_en
-                    ? <>Última modificación: <strong>{nombreMostrable(personasPorId[e.ultima_modificacion_por])}</strong> · {new Date(e.ultima_modificacion_en).toLocaleString('es-ES')}</>
-                    : 'Sin modificaciones desde el alta'}
+                  {e.creado_por && <>Dado de alta por: <strong>{nombreMostrable(personasPorId[e.creado_por])}</strong>{!e.ultima_modificacion_en && ` · ${new Date(e.created_at).toLocaleString('es-ES')}`}</>}
+                  {e.ultima_modificacion_en && (
+                    <>
+                      {e.creado_por && <br />}
+                      Última modificación: <strong>{nombreMostrable(personasPorId[e.ultima_modificacion_por])}</strong> · {new Date(e.ultima_modificacion_en).toLocaleString('es-ES')}
+                    </>
+                  )}
+                  {!e.creado_por && !e.ultima_modificacion_en && 'Sin datos de alta ni modificación (equipo importado)'}
                 </div>
                 {e.notas_inventario && <div className="muted">⚠ {e.notas_inventario}</div>}
               </div>
