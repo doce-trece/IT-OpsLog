@@ -6,5 +6,5 @@ import react from '@vitejs/plugin-react'
 // los archivos funcionen correctamente en https://tuusuario.github.io/tu-repo/
 export default defineConfig({
   plugins: [react()],
-  base: '/IT-OpsLogs/',
+  base: '/IT-OpsLog/',
 })
