@@ -563,14 +563,16 @@ function GestionEquipos({ equipos, clases, personasPorId, onCambio, editando, se
             <div className="fila-equipo-cabecera">
               <GaleriaFotos urls={e.fotos_urls} />
               <div>
-                <strong>{e.codigo}</strong> — {e.tipo} {e.modelo_basico}
-                {' '}<span className="badge">{clasesPorId[e.clase_id]?.nombre || '—'}</span>
+                <div className="fila-equipo-titulo">
+                  <strong>{e.codigo}</strong> — {e.tipo} {e.modelo_basico}
+                  <span className="badge">{clasesPorId[e.clase_id]?.nombre || '—'}</span>
+                </div>
+                <div className="muted fila-equipo-modificacion">
+                  {e.ultima_modificacion_en
+                    ? <>Última modificación: <strong>{nombreMostrable(personasPorId[e.ultima_modificacion_por])}</strong> · {new Date(e.ultima_modificacion_en).toLocaleString('es-ES')}</>
+                    : 'Sin modificaciones desde el alta'}
+                </div>
                 {e.notas_inventario && <div className="muted">⚠ {e.notas_inventario}</div>}
-                {e.ultima_modificacion_en && (
-                  <div className="muted">
-                    Última modificación: {nombreMostrable(personasPorId[e.ultima_modificacion_por])} · {new Date(e.ultima_modificacion_en).toLocaleString('es-ES')}
-                  </div>
-                )}
               </div>
               <div className="fila-equipo-acciones">
                 <span className={`badge estado-${e.estado}`}>{e.estado}</span>
