@@ -43,7 +43,6 @@ create table if not exists equipos (
     check (estado in ('libre','ocupado','en_revision')),
   ultima_modificacion_por uuid references profiles(id),
   ultima_modificacion_en timestamptz,
-  creado_por uuid references profiles(id),
   ultimo_estado_funcional text,
   foto_url text,
   fotos_urls text[] not null default '{}',
@@ -76,20 +75,6 @@ drop trigger if exists trigger_historial_equipo on equipos;
 create trigger trigger_historial_equipo
   before update on equipos
   for each row execute function registrar_historial_equipo();
-
--- Trigger: al crear un equipo, guarda automáticamente quién lo dio de alta.
-create or replace function registrar_creador_equipo()
-returns trigger language plpgsql security definer set search_path = public as $$
-begin
-  new.creado_por := auth.uid();
-  return new;
-end;
-$$;
-
-drop trigger if exists trigger_creador_equipo on equipos;
-create trigger trigger_creador_equipo
-  before insert on equipos
-  for each row execute function registrar_creador_equipo();
 
 -- ---------- BLOQUES LECTIVOS (horario) ----------
 create table if not exists bloques_lectivos (

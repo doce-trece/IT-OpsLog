@@ -161,6 +161,5 @@ textarea, select, input[type=text] { padding: 0.6rem; border: 1px solid var(--bo
 .form-equipo { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1rem; }
 .form-equipo button { background: var(--azul); color: white; border: none; padding: 0.5rem; border-radius: 6px; cursor: pointer; }
 .lista-equipos-simple { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; max-height: 300px; overflow-y: auto; }
-.gestion-equipos .lista-equipos-simple { max-height: 700px; }
 .lista-equipos-simple li { display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; border-bottom: 1px solid var(--borde); padding: 0.3rem 0; }
 .lista-equipos-simple li.fila-equipo { display: block; border-bottom: none; }
